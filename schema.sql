@@ -1,35 +1,40 @@
--- Estensioni necessarie (per UUID, se usato)
--- CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- ENUM per user role
 CREATE TYPE role_enum AS ENUM ('Supervisor', 'Worker');
 
--- Tabella USERS (user è parola riservata)
+CREATE TABLE ApprovedUsers(
+	id SERIAL PRIMARY KEY,
+	email VARCHAR(255) NOT NULL UNIQUE,  
+	data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- TIMESTAMP invece di VARCHAR
+);
+
+-- Tabella USERS
 CREATE TABLE users (
-  email VARCHAR(20) PRIMARY KEY,
-  username VARCHAR(20) NOT NULL,
-  pwd VARCHAR(20) NOT NULL,
-  role role_enum DEFAULT 'Worker' NOT NULL
+  email VARCHAR(255) PRIMARY KEY,  -- Email può essere più lunga di 20 caratteri
+  username VARCHAR(255) NOT NULL UNIQUE,  -- Username deve essere unico
+  pwd VARCHAR(255) NOT NULL,  -- Password hash sono lunghe (bcrypt = 60+ caratteri)
+  role role_enum NOT NULL DEFAULT 'Worker'
+);
+
+
+-- Tabella SERVERS  
+CREATE TABLE server (
+  id SERIAL PRIMARY KEY,
+  ip VARCHAR(20) NOT NULL UNIQUE,  -- IP deve essere unico se lo usi come riferimento
+  state BOOLEAN NOT NULL,
+  name VARCHAR(20) NOT NULL,
+  descr VARCHAR(20)
 );
 
 -- Tabella SERVICES
 CREATE TABLE service (
   id SERIAL PRIMARY KEY,
-  ip VARCHAR(20) NOT NULL,
+  ip VARCHAR(20) not NULL,
   name VARCHAR(20) NOT NULL,
   description TEXT,
   porta INTEGER,
   automatic_start BOOLEAN NOT NULL,
-  state BOOLEAN NOT NULL
-);
-
--- Tabella SERVERS
-CREATE TABLE server (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ip VARCHAR(20) NOT NULL,
   state BOOLEAN NOT NULL,
-  name VARCHAR(20),
-  descr VARCHAR(20)
+  constraint fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip)
 );
 
 -- Tabella RULES
@@ -38,15 +43,16 @@ CREATE TABLE rule (
   descr TEXT NOT NULL,
   status BOOLEAN NOT NULL DEFAULT false,
   ip VARCHAR(20) NOT NULL,
-  service INTEGER REFERENCES service(id)
+  server_id INTEGER REFERENCES server(id),  -- Foreign key corretta
+  service_id INTEGER REFERENCES service(id)  -- Nome coerente
 );
 
 -- Tabella LOG
 CREATE TABLE log (
   id SERIAL PRIMARY KEY,
-  data VARCHAR(20) NOT NULL,
-  "user" VARCHAR(20) REFERENCES users(email),
-  server VARCHAR(20) REFERENCES server(ip),
-  service INTEGER REFERENCES service(id),
-  descr VARCHAR(20) NOT NULL
+  data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- TIMESTAMP invece di VARCHAR
+  user_email VARCHAR(100) REFERENCES users(email),  -- Nome più chiaro
+  server_id INTEGER REFERENCES server(id),  -- Foreign key corretta all'ID
+  service_id INTEGER REFERENCES service(id),  -- Nome coerente
+  descr TEXT NOT NULL  -- TEXT invece di VARCHAR(20) per più flessibilità
 );
