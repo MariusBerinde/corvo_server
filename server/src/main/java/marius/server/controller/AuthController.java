@@ -303,13 +303,11 @@ public class AuthController {
             Optional<User> localUser = userRepo.findUserByEmail(userEmail);
             log.info("localUser="+localUser.toString());
 
-            // FIX: Messaggio generico per sicurezza
             if (!localUser.isPresent()) {
                 log.error("User not found with email during updateRoleUser made by IP="+request.getRemoteAddr());
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
             }
 
-            // FIX: Gestione sicura del parsing del ruolo
             try {
                 int roleValue = requestBody.get("user").get("role").asInt();
                 RoleEnum newRole = (requestBody.get("user").get("role").asInt() == 0)?RoleEnum.SUPERVISOR : RoleEnum.WORKER;
@@ -328,6 +326,68 @@ public class AuthController {
             log.error("Error updating user role for IP="+request.getRemoteAddr(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal server error");
         }
+    }
+
+
+    /**
+     * Deletes a user from the system.
+     *
+     * This endpoint allows authorized supervisors to delete user accounts from the system.
+     * Only users with SUPERVISOR role are permitted to perform this operation.
+     *
+     * @param requestBody JSON object containing the deletion request with the following required fields:
+     *                   - username: The username of the operator performing the deletion (must be a supervisor)
+     *                   - email: The email address of the user to be deleted (serves as the unique identifier)
+     * @param request HTTP servlet request object used for logging the client's IP address
+     *
+     * @return ResponseEntity containing:
+     *         - 200 OK with "true" if deletion is successful
+     *         - 400 Bad Request if required fields (username/email) are missing from the request body
+     *         - 401 Unauthorized if the operator does not have SUPERVISOR privileges
+     *         - 404 Not Found if the operator username is not found in the system
+     *
+     * @throws RuntimeException if the user to be deleted does not exist (handled by repository layer)
+     *
+     * Security considerations:
+     * - Validates operator permissions before allowing deletion
+     * - Logs all deletion attempts with IP addresses for audit purposes
+     * - Logs unauthorized access attempts for security monitoring
+     *
+     * Usage example:
+     * POST /api/users/delete
+     * {
+     *   "username": "supervisor_user",
+     *   "email": "user.to.delete@example.com"
+     * }
+     */
+    @PostMapping("/deleteUser")
+    public ResponseEntity deleteUser(@RequestBody JsonNode requestBody, HttpServletRequest request){
+
+            if(!requestBody.hasNonNull("username")){
+                log.warn("IP="+request.getRemoteAddr()+" tried to update a user role ");
+                return ResponseEntity.badRequest().body("username field missing ");
+            }
+            if(!requestBody.hasNonNull("email")){
+                log.error("IP="+request.getRemoteAddr()+" tried to delete a usere without email field ");
+                return ResponseEntity.badRequest().body("email field missing ");
+            }
+            String operator = requestBody.get("username").asText();
+            String userEmail = requestBody.get("email").asText();
+        Optional<User> operatorUser = userRepo.findUserByUsername(operator);
+        if (operatorUser.isEmpty()) {
+            log.error("IP=" + request.getRemoteAddr() + " - Unknown operator: " + operator + " tried to delete user: " + userEmail);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Operator not found");
+        }
+
+        RoleEnum roleOperator = operatorUser.get().getRole();
+        if (roleOperator != RoleEnum.SUPERVISOR) {
+            log.error("User=" + operator + " tried to delete=" + userEmail + " without permissions");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized"); // Fixed: added return
+        }
+           log.info("operator ="+operator+" delete user ="+userEmail);
+           userRepo.deleteById(userEmail);
+           return ResponseEntity.ok("true");
+
     }
    /*
     public ResponseEntity checkCredentials(@RequestBody JsonNode requestBody, HttpServletRequest request){}
