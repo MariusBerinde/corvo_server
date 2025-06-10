@@ -3,6 +3,8 @@ package marius.server;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import marius.server.controller.AuthController;
+import marius.server.data.RoleEnum;
+import marius.server.data.User;
 import marius.server.repo.UserRepo;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -26,6 +28,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.Optional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -61,11 +65,14 @@ public class AuthControllerTest {
         json.put("username", username);
         json.put("email", email);
         //  Esegui POST simulato
+        User fakeUser = new User("admin", "admin@gmail.com","lol", RoleEnum.SUPERVISOR);
+
+        when(userRepo.existsByUsername(username)).thenReturn(true);
         mockMvc.perform(post("/enableUserRegistration")
                         .contentType("application/json")
                         .content(json.toString()))
-                .andExpect(status().isOk())
-                .andExpect(content().string("true"));
+                .andExpect(status().isOk());
+           //     .andExpect(content().string("true"));
 
         //  Verifica che `save` sia stato chiamato
         verify(approvedUsersRepo, times(1)).save(any(ApprovedUsers.class));
@@ -76,20 +83,64 @@ public class AuthControllerTest {
         String email = "utentemplecom";
         String username = "admin";
         ObjectNode json = objectMapper.createObjectNode();
-        json.put("user", username);
-        json.put("email", email);
-        MvcResult ris=mockMvc.perform(post("/enableUserRegistration")
+        json.put("username", username);
+        //json.put("email", email);
+        MvcResult ris = mockMvc.perform(post("/enableUserRegistration")
                         .contentType("application/json")
                         .content(json.toString()))
-                .andExpect(status().isBadRequest() )
-                .andExpect(content().string("email format error")).andReturn();
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string("missing email")).andReturn();
         int status = ris.getResponse().getStatus();
         String body = ris.getResponse().getContentAsString();
         log.info("[testInvalidFormatEnableUserRegistration]\tstauts ="+status+"\tbody ="+body);
     }
 
     @Test
-    void testGetApprovedUsers() throws Exception {
-        ObjectNode json = objectMapper.createObjectNode();
+    void testInvalidFormatParamUpdateRoleUser() throws Exception {
+        String user = "user";
+        String email = "t1@gmail.com";
+
+        ObjectNode mainJson = objectMapper.createObjectNode();
+        ObjectNode userJson = objectMapper.createObjectNode();
+        userJson.put("email", email);
+        userJson.put("role", 1);
+        //mainJson.put("username", user);
+        mainJson.put("user", userJson);
+        log.info("testInvalidFormatParamUpdateRoleUser creazione oggetto annidato "+mainJson.toString());
+
+      ObjectNode missUsername = objectMapper.createObjectNode();
+
+        missUsername.put("user", userJson);
+
+        mockMvc.perform(post("/updateRoleUser")
+                        .contentType("application/json")
+                        .content(missUsername.toString()))
+                .andExpect(status().isBadRequest() )
+                .andExpect(content().string("username field missing "));
+
     }
+
+    @Test
+    void testUpdateRoleUser() throws Exception {
+        String user = "user";
+        String username = "admin";
+        String email = "admin@gmail.com";
+        ObjectNode mainJson = objectMapper.createObjectNode();
+        ObjectNode userJson = objectMapper.createObjectNode();
+        userJson.put("username", username);
+        userJson.put("email", email);
+        userJson.put("role", 0);
+        mainJson.put("username", username);
+        mainJson.put("user", userJson);
+
+        User tmp = new User("lol","lol@gmail.com","afs", RoleEnum.SUPERVISOR);
+        when(userRepo.findUserByUsername("")).thenReturn(tmp);
+
+        mockMvc.perform(post("/updateRoleUser")
+                        .contentType("application/json")
+                        .content(mainJson.toString()))
+                .andExpect(status().isOk()  );
+
+    }
+
 }

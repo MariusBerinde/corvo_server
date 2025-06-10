@@ -1,20 +1,16 @@
--- ENUM per user role
-CREATE TYPE role_enum AS ENUM ('Supervisor', 'Worker');
-
 CREATE TABLE ApprovedUsers(
 	id SERIAL PRIMARY KEY,
 	email VARCHAR(255) NOT NULL UNIQUE,  
-	data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- TIMESTAMP invece di VARCHAR
+	data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabella USERS
+
 CREATE TABLE users (
-  email VARCHAR(255) PRIMARY KEY,  -- Email può essere più lunga di 20 caratteri
-  username VARCHAR(255) NOT NULL UNIQUE,  -- Username deve essere unico
-  pwd VARCHAR(255) NOT NULL,  -- Password hash sono lunghe (bcrypt = 60+ caratteri)
-  role role_enum NOT NULL DEFAULT 'Worker'
+  email VARCHAR(255) PRIMARY KEY,
+  username VARCHAR(255) NOT NULL UNIQUE,
+  pwd VARCHAR(255) NOT NULL,
+  role INTEGER NOT NULL DEFAULT 1 CHECK (role IN (0, 1))
 );
-
 
 -- Tabella SERVERS  
 CREATE TABLE server (
