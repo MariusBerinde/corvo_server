@@ -134,7 +134,7 @@ public class AuthControllerTest {
         mainJson.put("user", userJson);
 
         User tmp = new User("lol","lol@gmail.com","afs", RoleEnum.SUPERVISOR);
-        when(userRepo.findUserByUsername("")).thenReturn(tmp);
+        //when(userRepo.findUserByUsername("")).thenReturn(tmp);
 
         mockMvc.perform(post("/updateRoleUser")
                         .contentType("application/json")

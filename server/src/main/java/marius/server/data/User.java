@@ -2,6 +2,7 @@ package marius.server.data;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import marius.server.Tools;
 import org.hibernate.annotations.DynamicInsert;
 
 @DynamicInsert
@@ -56,9 +57,7 @@ public class User{
         this.username = username;
     }
 
-    public void setPassword(String password) {
-        this.password = password;
-    }
+    public void setPassword(String password) {  this.password = Tools.hashPassword(password); }
 
     public void setRole(RoleEnum newRole) {
             this.role = newRole;

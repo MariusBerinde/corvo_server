@@ -170,7 +170,7 @@ public class AuthController {
  *                    - user: object with new user data
  *                      - name: new user's username
  *                      - email: new user's email (must be valid)
- *                      - password: new user's password (TODO: will be encrypted)
+ *                      - password: new user's password
  *                      - role: role as integer (0=SUPERVISOR, other=WORKER)
  * @param request HttpServletRequest for IP logging
  *
@@ -192,26 +192,22 @@ public class AuthController {
             if (creatorUser == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User creator not registered");
             }
-/*
+
             if (creatorUser.getRole() != RoleEnum.SUPERVISOR) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only supervisors can create users");
             }
- */
+
             String tmp_name = requestBody.get("user").get("name").asText();
 
-            log.info("tmp_name="+tmp_name);
             String tmp_email = requestBody.get("user").get("email").asText();
             if (!Tools.isValidEmail(tmp_email)) {
               log.error("format not valid email "+tmp_email+" during creation user with username ="+tmp_name);
                 return ResponseEntity.badRequest().body("format not valid email "+tmp_email+" during creation user with username ="+tmp_name);
             }
 
-            log.info("tmp_email="+tmp_email);
-            String tmp_password = requestBody.get("user").get("password").asText();
+            String tmp_password = Tools.hashPassword(requestBody.get("user").get("password").asText());
 
             log.info("tmp_password="+tmp_password);
-            //TODO: criptare password prima di inserimento
-            //RoleEnum tmp_role = (requestBody.get("user").get("role").asInt() == 0)?RoleEnum.fromString("Supervisor") : RoleEnum.fromString("Worker");
             RoleEnum tmp_role = (requestBody.get("user").get("role").asInt() == 0)?RoleEnum.SUPERVISOR : RoleEnum.WORKER;
             log.info("tmp_role="+tmp_role);
             User tmp = new User(tmp_name,tmp_email,tmp_password,tmp_role);
@@ -223,7 +219,6 @@ public class AuthController {
             log.error("IP="+request.getRemoteAddr()+"Problema con richiesta ="+e.getMessage()) ;
             return ResponseEntity.badRequest().body("missing 'username' and 'user'");
         }
-
     }
     /**
      * Updates the role of an existing user in the system.
@@ -389,8 +384,93 @@ public class AuthController {
            return ResponseEntity.ok("true");
 
     }
-   /*
-    public ResponseEntity checkCredentials(@RequestBody JsonNode requestBody, HttpServletRequest request){}
-    public ResponseEntity updatePassword(@RequestBody JsonNode requestBody, HttpServletRequest request){}
-    */
+
+    /**
+     * Authenticates a user with username and password credentials.
+     * Verifies the provided password against the stored Argon2 hash.
+     * All authentication attempts are logged with client IP address.
+     *
+     * @param requestBody JSON object containing user credentials:
+     *                    - username (string, required): the user's username
+     *                    - password (string, required): the user's plain text password
+     * @param request HttpServletRequest used for IP address logging
+     * @return ResponseEntity with:
+     *         - 200 OK: authentication successful, body contains User object
+     *         - 400 BAD REQUEST: missing required fields (username or password)
+     *         - 401 UNAUTHORIZED: invalid username or password
+     */
+    @PostMapping("/authUser")
+    public ResponseEntity  authUser(@RequestBody JsonNode requestBody, HttpServletRequest request){
+        if(!requestBody.hasNonNull("username")){
+            log.warn("IP="+request.getRemoteAddr()+" tried to login to the system");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        if(!requestBody.hasNonNull("password")){
+            log.error("IP="+request.getRemoteAddr()+"tried to login to the system without password field ");
+            return ResponseEntity.badRequest().body("password field missing ");
+        }
+        String username = requestBody.get("username").asText();
+        String password = requestBody.get("password").asText();
+
+        Optional<User> serverUser = userRepo.findUserByUsername(username) ;
+        log.info("serverUser="+serverUser.toString());
+        if (!serverUser.isPresent()) {
+           log.error("Tentative to authenticate with username "+username+" from IP="+request.getRemoteAddr());
+           return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found");
+        }
+        if(!Tools.isPasswordHashedWith(password, serverUser.get().getPassword())) {
+            log.error("Invalid password during login of user ="+username+" from IP="+request.getRemoteAddr());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid password");
+        }
+        log.info("User ="+username+" successfully authenticated with IP="+request.getRemoteAddr());
+        return ResponseEntity.ok(serverUser.get());
+    }
+
+    /**
+     * Update the password of the user
+     * @param requestBody JSON object containing user credentials:
+     *                    - username (string, required): the user's username
+     *                    - oldPassword (string, required): the user's plain text password
+     *                    - newPassword (string, required): the user's plain text password
+     * @param request HttpServletRequest used for IP address logging
+     * @return ResponseEntity with:
+     *         - 200 OK: authentication successful,true
+     *         - 400 BAD REQUEST: missing required fields (username or password)
+     *         - 401 UNAUTHORIZED: invalid username or password
+     *         - 403 FORBIDDEN: if the old password is not correct
+     */
+    @PostMapping("/updatePassword")
+    public ResponseEntity updatePassword(@RequestBody JsonNode requestBody, HttpServletRequest request){
+
+        if(!requestBody.hasNonNull("username")){
+            log.warn("IP="+request.getRemoteAddr()+"updatePassword missing username field in json file");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        if(!requestBody.hasNonNull("oldPassword")){
+            log.error("IP="+request.getRemoteAddr()+"updatePassword missing oldPassword field in json file");
+            return ResponseEntity.badRequest().body("oldPassword field missing ");
+        }
+        if(!requestBody.hasNonNull("newPassword")){
+            log.error("IP="+request.getRemoteAddr()+"updatePassword missing newPassword field in json file");
+            return ResponseEntity.badRequest().body("newPassword field missing ");
+        }
+
+        String username = requestBody.get("username").asText();
+
+        Optional<User> serverUser = userRepo.findUserByUsername(username)  ;
+        if (!serverUser.isPresent()) {
+            log.error("Tentative to update the password with username "+username+" from IP="+request.getRemoteAddr());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found");
+        }
+
+        String oldPwd = requestBody.get("oldPassword").asText();
+        if (!Tools.isPasswordHashedWith(oldPwd, serverUser.get().getPassword())) {
+            log.error("updatePassword : failed to update the password with username "+username+" from IP="+request.getRemoteAddr()+" because the old password is wrong");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid old password");
+        }
+        String newPwd = Tools.hashPassword(requestBody.get("newPassword").asText()) ;
+        serverUser.get().setPassword(newPwd);
+        userRepo.save(serverUser.get());
+        return ResponseEntity.ok("true");
+    }
 }
