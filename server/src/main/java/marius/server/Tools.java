@@ -81,4 +81,36 @@ public class Tools {
         }
         return encoder.matches(plain, encoded);
     }
+
+    /**
+     * Check if IP is a valid IP address
+     * @param ip address
+     * @return true if is a valid IP address , false otherwise
+     */
+    public static boolean isValidIp(String ip){
+        if (ip == null){
+            return false;
+        }
+        String local=ip.trim();
+        int minLen=6,maxLen=15;
+       if(local.length()<minLen || local.length()>maxLen){
+           return false;
+       }
+       String nrs[] = local.split("\\.");
+       if(nrs.length!=4){
+           return false;
+       }
+       for(int i=0;i<nrs.length;i++){
+           try {
+               int nr=Integer.parseInt(nrs[i]);
+               if(nr<0 || nr>255){
+                   return false;
+               }
+           }catch (NumberFormatException e){
+              return false;
+           }
+       }
+       return true;
+
+    }
 }

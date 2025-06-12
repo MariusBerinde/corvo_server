@@ -67,4 +67,41 @@ public class ToolTests {
         assertFalse(Tools.isPasswordHashedWith(plain1, hash2),"Test2:different text not  match to hash");
     }
 
+    @Test
+    void testValidIp(){
+        String minLenght="0.0.0.0";
+        String maxLenght="255.255.255.255";
+        String avg="109.198.168.1";
+        String avg1="1.1.1.1";
+        String avg2= "10.0.0.1";        // IP privato classe A
+        String avg3= "172.16.254.1";    // IP privato classe B
+        String avg4= "8.8.8.8";
+        String avg5= "193.168.111.111";
+
+        assertTrue(Tools.isValidIp(minLenght),"minLenght valid");
+        assertTrue(Tools.isValidIp(maxLenght),"maxLenght valid");
+        assertTrue(Tools.isValidIp(avg),"avg valid");
+        assertTrue(Tools.isValidIp(avg1),"avg forse problematico valid");
+        assertTrue(Tools.isValidIp(avg2),"avg forse problematico valid");
+        assertTrue(Tools.isValidIp(avg3),"avg forse problematico valid");
+        assertTrue(Tools.isValidIp(avg4),"avg forse problematico valid");
+        assertTrue(Tools.isValidIp(avg5),"avg forse problematico valid");
+
+        String e1="";
+        String e2="255.255.255.255.255";
+        String e3="...";
+        String e4="A.B.C.E";
+        String e5="256.0.30.111";
+        String e6="11.3.2.-23";
+        String e7="1.1.1";
+        assertFalse(Tools.isValidIp(e1),"empty string ");
+        assertFalse(Tools.isValidIp(e2),"too long  error ");
+        assertFalse(Tools.isValidIp(e3),"only dots error ");
+        assertFalse(Tools.isValidIp(e4),"not numbers error ");
+        assertFalse(Tools.isValidIp(e5),"out of range max error ");
+        assertFalse(Tools.isValidIp(e6),"out of range min error ");
+        assertFalse(Tools.isValidIp(e7)," max error ");
+
+    }
+
 }

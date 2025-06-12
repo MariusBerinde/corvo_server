@@ -18,7 +18,7 @@ CREATE TABLE server (
   ip VARCHAR(20) NOT NULL UNIQUE,  -- IP deve essere unico se lo usi come riferimento
   state BOOLEAN NOT NULL,
   name VARCHAR(20) NOT NULL,
-  descr VARCHAR(20)
+  descr VARCHAR(255)
 );
 
 -- Tabella SERVICES

@@ -26,8 +26,8 @@ public class Server {
     private String descr;
 
     public Server(){}
-    public Server(int id, String ip, boolean state, String name, String descr) {
-        this.id = id; this.ip = ip; this.state = state; this.name = name; this.descr = descr;
+    public Server( String ip, boolean state, String name, String descr) {
+         this.ip = ip; this.state = state; this.name = name; this.descr = descr;
     }
 
 
