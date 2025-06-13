@@ -34,13 +34,23 @@ CREATE TABLE service (
 );
 
 -- Tabella RULES
-CREATE TABLE rule (
+CREATE TABLE rules (
   id SERIAL PRIMARY KEY,
   descr TEXT NOT NULL,
   status BOOLEAN NOT NULL DEFAULT false,
   ip VARCHAR(20) NOT NULL,
-  server_id INTEGER REFERENCES server(id),  -- Foreign key corretta
-  service_id INTEGER REFERENCES service(id)  -- Nome coerente
+	service integer,
+  constraint fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip),
+  constraint fk_service FOREIGN KEY(service) REFERENCES public.service(id)
+);
+
+
+CREATE TABLE lynis (
+  id SERIAL PRIMARY KEY,
+  auditor VARCHAR(255) NOT NULL,
+  ip VARCHAR(20) NOT NULL,
+  list_id_skipped_test TEXT,
+  CONSTRAINT fk_lynis_ip FOREIGN KEY(ip) REFERENCES public.server(ip)
 );
 
 -- Tabella LOG
