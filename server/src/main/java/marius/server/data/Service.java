@@ -41,4 +41,60 @@ public class Service {
         this.ip = ip; this.name = name; this.description = description; this.porta = porta;
         this.automatic_start = automatic_start; this.state = state;
     }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getIp() {
+        return ip;
+    }
+
+    public void setIp(String ip) {
+        this.ip = ip;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getPorta() {
+        return porta;
+    }
+
+    public void setPorta(int porta) {
+        this.porta = porta;
+    }
+
+    public boolean isAutomatic_start() {
+        return automatic_start;
+    }
+
+    public void setAutomatic_start(boolean automatic_start) {
+        this.automatic_start = automatic_start;
+    }
+
+    public boolean isState() {
+        return state;
+    }
+
+    public void setState(boolean state) {
+        this.state = state;
+    }
 }

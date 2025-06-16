@@ -30,5 +30,43 @@ public class Server {
          this.ip = ip; this.state = state; this.name = name; this.descr = descr;
     }
 
+    public int getId() {
+        return id;
+    }
 
+    public String getIp() {
+        return ip;
+    }
+
+    public boolean isState() {
+        return state;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getDescr() {
+        return descr;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public void setIp(String ip) {
+        this.ip = ip;
+    }
+
+    public void setState(boolean state) {
+        this.state = state;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setDescr(String descr) {
+        this.descr = descr;
+    }
 }

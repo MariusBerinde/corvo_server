@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class ServerCorvoApplication {
 
 	public static void main(String[] args) {
+
 		SpringApplication.run(ServerCorvoApplication.class, args);
 	}
 

@@ -1,9 +1,19 @@
 package marius.server;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import marius.server.data.Lynis;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+
+
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ToolTests {
 
     private static final Logger log = LoggerFactory.getLogger(ToolTests .class);
+
 
     @Test
     void checkisValidEmail(){
@@ -101,6 +112,75 @@ public class ToolTests {
         assertFalse(Tools.isValidIp(e5),"out of range max error ");
         assertFalse(Tools.isValidIp(e6),"out of range min error ");
         assertFalse(Tools.isValidIp(e7)," max error ");
+
+    }
+
+    @Test
+    void testVector(){
+        /*
+{
+  "username": "t1",
+  "lynis": {
+    "ip": "193.168.111.111",
+    "auditor": "lol",
+    "listIdSkippedTest":["ACCT-2754","ACCT-2760"]
+  }
+}
+         */
+        String username="t1", ip = "193.168.111.111", auditor = "lol";
+        ObjectMapper mapper = new ObjectMapper();
+
+        ObjectNode main = mapper.createObjectNode();
+        ObjectNode lynis = mapper.createObjectNode();
+
+        main.put("username", username);
+        lynis.put("ip", ip);
+        lynis.put("auditor", auditor);
+
+        ArrayNode list = mapper.createArrayNode();
+        list.add("ACCT-2754");  list.add("ACCT-2760");
+        lynis.put("listIdSkippedTest", list);
+        main.put("lynis", lynis);
+        System.out.println("Oggetto creato = "+main.toString());
+        System.out.println("-------------------");
+       String objUsername = main.get("username").asText();
+       String objIp = main.get("lynis").get("ip").asText();
+       String objAuditor = main.get("lynis").get("auditor").asText();
+        JsonNode objList =  main.get("lynis").get("listIdSkippedTest");
+       String row="";
+        if( objList.isArray() ){
+
+           for( int i=0; i<objList.size(); i++ ){
+               row += (i<objList.size()-1)? objList.get(i).asText()+","  :objList.get(i).asText();
+           }
+
+
+           System.out.println(row);
+        }
+        else {
+            System.out.println("non array");
+        }
+
+      Lynis obj;
+        if(row == "")
+            obj = new Lynis(auditor,ip);
+        else
+            obj = new Lynis(auditor,ip,row);
+        System.out.println(obj.toString());
+    }
+
+    @Test
+    void testTresformStringToTimeStamp(){
+
+        String stringLogJson ="Mon May 05 2025 10:48:30 GMT+0200 (Ora legale dell’Europa centrale)";
+        String cleanedLog = stringLogJson.replaceAll("\\s*\\([^)]*\\)\\s*", "");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE MMM dd yyyy HH:mm:ss 'GMT'Z", Locale.ENGLISH);
+
+        // Parsa e crea il Timestamp
+        OffsetDateTime offsetDateTime = OffsetDateTime.parse(cleanedLog, formatter);
+        Timestamp logTime = Timestamp.valueOf(offsetDateTime.toLocalDateTime());
+        System.out.printf("Stringa json=%s\tTimeStamp= %s\n",stringLogJson,logTime.toString());
+
 
     }
 

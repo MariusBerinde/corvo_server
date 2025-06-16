@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -31,14 +34,16 @@ public class ServerController {
     private final ServiceRepo serviceRepo;
     private final RulesRepo rulesRepo;
     private final LynisRepo lynisRepo;
+    private final LogRepo logRepo;
     private static final Logger log = LoggerFactory.getLogger(ServerController.class);
 
-    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo) {
+    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo,LogRepo logRepo) {
         this.userRepo = userRepo;
         this.serverRepo = serverRepo;
         this.serviceRepo = serviceRepo;
         this.rulesRepo = rulesRepo;
         this.lynisRepo = lynisRepo;
+        this.logRepo = logRepo;
     }
     /**
      * Return the information about the server indicate by id
@@ -131,6 +136,121 @@ public class ServerController {
         return ResponseEntity.ok(serverRepo.findAll());
     }
 
+    @GetMapping("/getAllLogs")
+    public ResponseEntity getAllLogs(@RequestBody JsonNode requestBody, HttpServletRequest request){
+        if(!requestBody.hasNonNull("username")){
+            log.error("IP="+request.getRemoteAddr()+" failed in getAllLogs : missing username field");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        String actualUsername = requestBody.get("username").asText();
+        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized username ");
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+        }
+        log.info("username="+actualUsername+" getAllLogs  ");
+
+        Log log = new Log(actualUser.get().getEmail(),request.getRemoteAddr().toString(),"get all logs ok");
+        return ResponseEntity.ok(logRepo.findAll());
+    }
+
+    @PostMapping("/addLog")
+    public ResponseEntity addLog(@RequestBody JsonNode requestBody, HttpServletRequest request){
+        if(!requestBody.hasNonNull("username")){
+            log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing username field");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        if(!requestBody.hasNonNull("log")){
+            log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing log field ");
+            return ResponseEntity.badRequest().body("log field missing ");
+        }
+        String actualUsername = requestBody.get("username").asText();
+        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in addLog  : unrecognized username ");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+        }
+        if (!requestBody.get("log").hasNonNull("data")) {
+            log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing data field");
+            return ResponseEntity.badRequest().body("data field missing ");
+        }
+		String stringLogJson = requestBody.get("log").get("data").asText();
+
+		// Pulisci la stringa rimuovendo la parte tra parentesi
+		String cleanedLog = stringLogJson.replaceAll("\\s*\\([^)]*\\)\\s*", "");
+
+		// Crea il formatter 
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE MMM dd yyyy HH:mm:ss 'GMT'Z", Locale.ENGLISH);
+
+		// Parsa e crea il Timestamp
+		OffsetDateTime offsetDateTime = OffsetDateTime.parse(cleanedLog, formatter);
+		Timestamp logTime = Timestamp.valueOf(offsetDateTime.toLocalDateTime());
+
+        if (!requestBody.get("log").hasNonNull("user")) {
+            log.error("IP="+request.getRemoteAddr()+" failed in user : missing data field");
+            return ResponseEntity.badRequest().body("user field missing in log field ");
+        }
+
+        Optional<User> userLog = userRepo.findUserByEmail(requestBody.get("log").get("user").asText());
+	if (!userLog.isPresent()){
+
+            log.error("IP="+request.getRemoteAddr()+"failed in addlog: log.user not found");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("log.user not found");
+		}
+	
+        if (!requestBody.get("log").hasNonNull("descr")) {
+            log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing log.descr field");
+            return ResponseEntity.badRequest().body("log.descr field missing ");
+        }
+	String descr = requestBody.get("log").get("descr").asText();
+	if(requestBody.get("log").hasNonNull("server")){
+			String server = requestBody.get("log").get("server").asText();
+
+			if (!Tools.isValidIp(server)){
+				log.error("IP="+request.getRemoteAddr()+"server not valid");
+				return ResponseEntity.badRequest().body("server not valid");
+			}
+
+			Optional<Server>  actualServer = serverRepo.findByIp(server);
+			if(!actualServer .isPresent()){
+				log.error("IP="+request.getRemoteAddr()+"failed in addLog  : server not found ");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND).body("server not found");
+			}
+			Log localLog = new Log(userLog.get().getEmail(),server,descr,logTime);
+            logRepo.save(localLog);
+            return ResponseEntity.ok(localLog);
+		}
+    if(requestBody.get("log").hasNonNull("service")){
+        Integer service = Integer.valueOf(requestBody.get("log").get("service").asInt());
+        Optional<Service> localService = serviceRepo.findById(service);
+        if(!localService.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in addLog  : service not found");
+            return ResponseEntity.badRequest().body("service not found");
+        }
+        if(!requestBody.get("log").hasNonNull("server")){
+            log.error("IP="+request.getRemoteAddr()+"failed in addLog : missing server field in log object ");
+            return ResponseEntity.badRequest().body("server field missing in log object ");
+        }
+        String server = requestBody.get("log").get("server").asText();
+        //if (!localService.get().getIp().equals(server)){
+        if (!localService.get().getIp().equals(server)){
+            log.error("IP="+request.getRemoteAddr()+"error in addLog  : server of json not match with server of service ");
+            return ResponseEntity.badRequest().body("server of json not match with server of service ");
+        }
+        Log localLog = new Log(userLog.get().getEmail(),server,service,descr,logTime);
+        logRepo.save(localLog);
+        return ResponseEntity.ok(localLog);
+    }
+
+
+        Log locaLog = new Log(userLog.get().getEmail(),descr,logTime);
+        logRepo.save(locaLog);
+        return ResponseEntity.ok(locaLog);
+
+
+    }
 
     @PostMapping("/addServer")
     public ResponseEntity addServer(@RequestBody JsonNode requestBody, HttpServletRequest request){

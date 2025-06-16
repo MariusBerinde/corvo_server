@@ -56,9 +56,12 @@ CREATE TABLE lynis (
 -- Tabella LOG
 CREATE TABLE log (
   id SERIAL PRIMARY KEY,
-  data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- TIMESTAMP invece di VARCHAR
-  user_email VARCHAR(100) REFERENCES users(email),  -- Nome più chiaro
-  server_id INTEGER REFERENCES server(id),  -- Foreign key corretta all'ID
-  service_id INTEGER REFERENCES service(id),  -- Nome coerente
-  descr TEXT NOT NULL  -- TEXT invece di VARCHAR(20) per più flessibilità
+  data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  
+  user_email VARCHAR(255) REFERENCES users(email),  
+  ip VARCHAR(20) NOT NULL,  
+  service integer,
+  descr TEXT NOT NULL  ,
+  constraint fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip),
+  constraint fk_service FOREIGN KEY(service) REFERENCES public.service(id),
+  constraint fk_email FOREIGN KEY(user_email) REFERENCES public.users(email)
 );
