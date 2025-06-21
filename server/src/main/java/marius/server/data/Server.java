@@ -19,7 +19,7 @@ public class Server {
     @Column(nullable = false)
     private boolean state;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String name;
 
     @Column

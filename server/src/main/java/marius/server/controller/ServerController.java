@@ -11,10 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -120,41 +117,60 @@ public class ServerController {
      *
      */
     @GetMapping("/getAllServers")
-    public ResponseEntity getAllServers(@RequestBody JsonNode requestBody, HttpServletRequest request){
-        if(!requestBody.hasNonNull("username")){
-            log.warn("IP="+request.getRemoteAddr()+" failed in getAllServers : missing username field");
+    public ResponseEntity getAllServers(@RequestHeader("email") String email, HttpServletRequest request){
+        if(email == null || email.isEmpty()){
+            log.info("IP="+request.getRemoteAddr()+" failed in getAllServers : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
+        log.info(" getAllServers email="+email);
 
-        String actualUsername = requestBody.get("username").asText();
-        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        Optional<User> actualUser = userRepo.findUserByEmail(email);
         if(!actualUser.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in getAllServers  : unrecognized username ");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
         }
-        log.info("username="+actualUsername+" getAllServers  ");
+        log.info("username="+email+" getAllServers  ");
         return ResponseEntity.ok(serverRepo.findAll());
     }
 
     @GetMapping("/getAllLogs")
-    public ResponseEntity getAllLogs(@RequestBody JsonNode requestBody, HttpServletRequest request){
-        if(!requestBody.hasNonNull("username")){
+    public ResponseEntity getAllLogs(@RequestHeader("username") String username, HttpServletRequest request){
+        if(username == null || username.isEmpty()){
             log.error("IP="+request.getRemoteAddr()+" failed in getAllLogs : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
-        String actualUsername = requestBody.get("username").asText();
-        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        Optional<User> actualUser = userRepo.findUserByUsername(username);
 
         if(!actualUser.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized username ");
 
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
         }
-        log.info("username="+actualUsername+" getAllLogs  ");
+        log.info("username="+username+" getAllLogs  ");
 
         Log log = new Log(actualUser.get().getEmail(),request.getRemoteAddr().toString(),"get all logs ok");
         return ResponseEntity.ok(logRepo.findAll());
     }
+
+    @GetMapping("/getUserLogs")
+    public ResponseEntity getUserLogs(@RequestHeader("username") String username, HttpServletRequest request){
+        if(username == null || username.isEmpty()){
+            log.error("IP="+request.getRemoteAddr()+" failed in getUserLogs : missing username field");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        Optional<User> actualUser = userRepo.findUserByUsername(username);
+
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized username ");
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+        }
+        log.info("username="+username+" getAllLogs  ");
+
+        Log log = new Log(actualUser.get().getEmail(),request.getRemoteAddr().toString(),"get all logs ok");
+        return ResponseEntity.ok(logRepo.findByUserEmail(actualUser.get().getEmail()));
+    }
+
 
     @PostMapping("/addLog")
     public ResponseEntity addLog(@RequestBody JsonNode requestBody, HttpServletRequest request){
@@ -200,11 +216,11 @@ public class ServerController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("log.user not found");
 		}
 	
-        if (!requestBody.get("log").hasNonNull("descr")) {
+        if (!requestBody.get("log").hasNonNull("desc")) {
             log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing log.descr field");
             return ResponseEntity.badRequest().body("log.descr field missing ");
         }
-	String descr = requestBody.get("log").get("descr").asText();
+	String descr = requestBody.get("log").get("desc").asText();
 	if(requestBody.get("log").hasNonNull("server")){
 			String server = requestBody.get("log").get("server").asText();
 
@@ -250,6 +266,86 @@ public class ServerController {
         return ResponseEntity.ok(locaLog);
 
 
+    }
+
+    /**
+     *  Allows to the user to add the json array of array logs
+     * @param requestBody  requestBody JSON object containing user credentials:
+     *      *                    - username (string, required): the user's username
+     *      *                    - logs (string, required): the json array of logs that will be added to the server
+     *      *
+     * @param request is used for track the ip of unautorizated users
+     * @return
+     */
+    @PostMapping("/addAllLogs")
+    public ResponseEntity addAllLogs(@RequestBody JsonNode requestBody, HttpServletRequest request){
+
+        if(!requestBody.hasNonNull("username")){
+            log.error("IP="+request.getRemoteAddr()+" failed in addLogs : missing username field");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        if(!requestBody.hasNonNull("logs")){
+            log.error("IP="+request.getRemoteAddr()+" failed in addLogs : missing logs field ");
+            return ResponseEntity.badRequest().body("log field missing ");
+        }
+
+        String actualUsername = requestBody.get("username").asText();
+        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in addLogs  : unrecognized username ");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+        }
+        if (!requestBody.get("logs").isArray() ) {
+            log.error("IP="+request.getRemoteAddr()+" failed in addLogs :  logs is not an array");
+            return ResponseEntity.badRequest().body("logs is not an array");
+        }
+       List<Log> logs = new ArrayList<>();
+       JsonNode listLogs = requestBody.get("logs");
+       for (JsonNode logJson : listLogs) {
+           if (!logJson.hasNonNull("data")) {
+               log.error("IP="+request.getRemoteAddr()+" failed in addLogs : missing data field");
+               return ResponseEntity.badRequest().body("data field missing ");
+           }
+           String stringLogJson = logJson.get("data").asText();
+
+           // Pulisci la stringa rimuovendo la parte tra parentesi
+           String cleanedLog = stringLogJson.replaceAll("\\s*\\([^)]*\\)\\s*", "");
+
+           // Crea il formatter
+           DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE MMM dd yyyy HH:mm:ss 'GMT'Z", Locale.ENGLISH);
+
+           // Parsa e crea il Timestamp
+           OffsetDateTime offsetDateTime = OffsetDateTime.parse(cleanedLog, formatter);
+           Timestamp logTime = Timestamp.valueOf(offsetDateTime.toLocalDateTime());
+
+           if(!logJson.hasNonNull("user")){
+               log.error("IP="+request.getRemoteAddr()+"failed in addLogs : missing user field in log object ");
+               return ResponseEntity.badRequest().body("user field missing in log object of json Array");
+           }
+
+           Optional<User> userLog = userRepo.findUserByEmail(logJson.get("user").asText());
+
+           if (!userLog.isPresent()){
+
+               log.error("IP="+request.getRemoteAddr()+"failed in addlogs: log.user not found");
+               return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("log.user not found");
+           }
+
+           if (!logJson.hasNonNull("desc")) {
+               log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing log.descr field");
+               return ResponseEntity.badRequest().body("log.descr field missing ");
+           }
+
+           String descr = logJson.get("desc").asText();
+           if (!logJson.hasNonNull("server")){
+               log.error("IP="+request.getRemoteAddr()+"failed in addLogs : missing server field in log object ");
+               return ResponseEntity.badRequest().body("server field missing in log object of json Array");
+           }
+           String server = logJson.get("server").asText();
+           logs.add(new Log(userLog.get().getEmail(),server,descr,logTime));
+       }
+       logRepo.saveAll(logs);
+       return ResponseEntity.ok("true");
     }
 
     @PostMapping("/addServer")
