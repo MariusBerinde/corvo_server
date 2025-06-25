@@ -66,7 +66,8 @@ public class LocalAgentRegistration {
                 else{
                     log.info("Agent ping failed");
                     try{
-                        Thread.sleep(50000);
+                        //Thread.sleep(50000);
+                        Thread.sleep(100000);
 
                     }catch (InterruptedException e){
                         Thread.currentThread().interrupt();

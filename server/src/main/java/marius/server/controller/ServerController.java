@@ -139,7 +139,7 @@ public class ServerController {
             log.error("IP="+request.getRemoteAddr()+" failed in getAllLogs : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
-        Optional<User> actualUser = userRepo.findUserByUsername(username);
+        Optional<User> actualUser = userRepo.findUserByEmail(username);
 
         if(!actualUser.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized username ");
@@ -153,19 +153,20 @@ public class ServerController {
     }
 
     @GetMapping("/getUserLogs")
-    public ResponseEntity getUserLogs(@RequestHeader("username") String username, HttpServletRequest request){
-        if(username == null || username.isEmpty()){
-            log.error("IP="+request.getRemoteAddr()+" failed in getUserLogs : missing username field");
-            return ResponseEntity.badRequest().body("username field missing ");
+    public ResponseEntity getUserLogs(@RequestHeader("email") String email, HttpServletRequest request){
+        if(email == null || email.isEmpty()){
+            log.error("IP="+request.getRemoteAddr()+" failed in getUserLogs : missing email field");
+            return ResponseEntity.badRequest().body("email field missing ");
         }
-        Optional<User> actualUser = userRepo.findUserByUsername(username);
+
+        Optional<User> actualUser = userRepo.findUserByEmail(email);
 
         if(!actualUser.isPresent()){
-            log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized username ");
+            log.error("IP="+request.getRemoteAddr()+"failed in getAllLogs  : unrecognized email ");
 
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized email");
         }
-        log.info("username="+username+" getAllLogs  ");
+        log.info("email="+email+" getAllLogs  ");
 
         Log log = new Log(actualUser.get().getEmail(),request.getRemoteAddr().toString(),"get all logs ok");
         return ResponseEntity.ok(logRepo.findByUserEmail(actualUser.get().getEmail()));

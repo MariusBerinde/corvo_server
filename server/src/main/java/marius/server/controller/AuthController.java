@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -86,25 +87,23 @@ public class AuthController {
      * @throws Exception handled generically with error message
      */
     @GetMapping("/getApprovedUsers")
-    public ResponseEntity getApprovedUsers(@RequestBody JsonNode requestBody, HttpServletRequest request) {
-        try {
-            if (!requestBody.hasNonNull("username")) {
+    public ResponseEntity getApprovedUsers(@RequestHeader("username") String username, HttpServletRequest request) {
+        if (username == null || username.isEmpty()) {
+            return ResponseEntity.badRequest().body("Missing username header");
+        }
 
-                log.error("Richiesta malformata: manca 'user' da IP={}", request.getRemoteAddr());
-                return ResponseEntity.badRequest().body("missing username");
-            }
-
-            String username = requestBody.get("username").asText();
+        log.info("IP=" + request.getRemoteAddr(),"getApprovedUsers:parametro "+username);
             if (!userRepo.existsByUsername(username)) {
                 log.error("IP=" + request.getRemoteAddr());
                 return ResponseEntity.badRequest().body("username not auth ");
             }
-            var emails = approvedUsersRepo.findAll();
-            return ResponseEntity.ok(emails);
-        } catch (Exception e) {
-            log.error("IP=" + request.getRemoteAddr() + "Problema con richiesta =" + e.getMessage());
-            return ResponseEntity.badRequest().body("missing 'username' and 'email'");
-        }
+            List<ApprovedUsers> listApprovedUsers = approvedUsersRepo.findAll();
+            List<String> approvedEmails = new ArrayList<>();
+            for (ApprovedUsers approvedUsers : listApprovedUsers) {
+                approvedEmails.add(approvedUsers.getEmail());
+            }
+
+            return ResponseEntity.ok(approvedEmails);
     }
 
     @PostMapping("/isEmailApproved")
@@ -218,6 +217,7 @@ public class AuthController {
             }
 
             String tmp_password = Tools.hashPassword(requestBody.get("user").get("password").asText());
+            //String tmp_password = requestBody.get("user").get("password").asText();
 
             log.info("tmp_password=" + tmp_password);
             RoleEnum tmp_role = (requestBody.get("user").get("role").asInt() == 0) ? RoleEnum.SUPERVISOR : RoleEnum.WORKER;
@@ -427,10 +427,16 @@ public class AuthController {
             log.error("Tentative to authenticate with email" + email + " from IP=" + request.getRemoteAddr());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found");
         }
+
+
         if (!Tools.isPasswordHashedWith(password, serverUser.get().getPassword())) {
             log.error("Invalid password during login of user =" + email + " from IP=" + request.getRemoteAddr());
+            log.info("DEBUG HASH =" +serverUser.get().getPassword());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid password");
         }
+
+
+
         log.info("User =" + email + " successfully authenticated with IP=" + request.getRemoteAddr());
         serverUser.get().setPassword("");
         return ResponseEntity.ok(serverUser.get());
@@ -440,7 +446,7 @@ public class AuthController {
      * Update the password of the user
      *
      * @param requestBody JSON object containing user credentials:
-     *                    - username (string, required): the user's username
+     *                    - email (string, required): the user's username
      *                    - oldPassword (string, required): the user's plain text password
      *                    - newPassword (string, required): the user's plain text password
      * @param request     HttpServletRequest used for IP address logging
@@ -451,11 +457,12 @@ public class AuthController {
      * - 403 FORBIDDEN: if the old password is not correct
      */
     @PostMapping("/updatePassword")
+    @Transactional
     public ResponseEntity updatePassword(@RequestBody JsonNode requestBody, HttpServletRequest request) {
 
-        if (!requestBody.hasNonNull("username")) {
-            log.warn("IP=" + request.getRemoteAddr() + "updatePassword missing username field in json file");
-            return ResponseEntity.badRequest().body("username field missing ");
+        if (!requestBody.hasNonNull("email")) {
+            log.warn("IP=" + request.getRemoteAddr() + "updatePassword missing email field in json file");
+            return ResponseEntity.badRequest().body("email field missing ");
         }
         if (!requestBody.hasNonNull("oldPassword")) {
             log.error("IP=" + request.getRemoteAddr() + "updatePassword missing oldPassword field in json file");
@@ -466,22 +473,53 @@ public class AuthController {
             return ResponseEntity.badRequest().body("newPassword field missing ");
         }
 
-        String username = requestBody.get("username").asText();
+        String email = requestBody.get("email").asText();
 
-        Optional<User> serverUser = userRepo.findUserByUsername(username);
+        Optional<User> serverUser = userRepo.findUserByEmail(email);
         if (!serverUser.isPresent()) {
-            log.error("Tentative to update the password with username " + username + " from IP=" + request.getRemoteAddr());
+            log.error("Tentative to update the password with email " + email + " from IP=" + request.getRemoteAddr());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not found");
         }
 
         String oldPwd = requestBody.get("oldPassword").asText();
+
+
         if (!Tools.isPasswordHashedWith(oldPwd, serverUser.get().getPassword())) {
-            log.error("updatePassword : failed to update the password with username " + username + " from IP=" + request.getRemoteAddr() + " because the old password is wrong");
+            log.error("updatePassword : failed to update the password with email " + email + " from IP=" + request.getRemoteAddr() + " because the old password is wrong");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid old password");
         }
-        String newPwd = Tools.hashPassword(requestBody.get("newPassword").asText());
+
+
+
+        /*
+        if (!oldPwd.equals(serverUser.get().getPassword())) {
+            log.error("updatePassword : failed to update the password with email " + email + " from IP=" + request.getRemoteAddr() + " because the old password is wrong");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid old password");
+        }
+
+         */
+        String newPwd = Tools.hashPassword( requestBody.get("newPassword").asText());
+        //String newPwd =  requestBody.get("newPassword").asText();
+        log.info("new password =" + newPwd);
+
+        /*
         serverUser.get().setPassword(newPwd);
         userRepo.save(serverUser.get());
+         */
+        User userdb=serverUser.get();
+        userdb.setPassword(newPwd);
+
+
+
+        /*
+        if(Tools.isPasswordHashedWith(newPwd, userdb.getPassword()))
+            log.info("UPDATE PASSWORD : aggiornamto correttente");
+        else
+            log.info("UPDATE PASSWORD :problema di aggiornamento");
+*/
+
+
+        //log.info("updatePassword : update pwd ok");
         return ResponseEntity.ok("true");
     }
 

@@ -28,4 +28,10 @@ public class ApprovedUsers {
         this.email = email;
         //this.data = LocalDateTime.now();
     }
+    public Integer getId(){ return this.id; }
+    public String getEmail(){ return this.email; }
+    public LocalDateTime getData(){ return this.data; }
+    public void setId(Integer id){ this.id = id; }
+    public void setEmail(String email){ this.email = email; }
+    public void setData(LocalDateTime data){ this.data = data; }
 }

@@ -12,4 +12,5 @@ public interface ApprovedUsersRepo extends JpaRepository<ApprovedUsers,Integer> 
     Boolean existsByEmail(String email);
 
     Integer deleteByEmail(String email);
+
 }
