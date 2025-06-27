@@ -135,7 +135,7 @@ public class AuthController {
      * - 400 BAD REQUEST: validation error or insufficient permissions
      * @throws Exception handled generically with error message
      */
-    @GetMapping("/deleteEnabledUser")
+    @PostMapping("/deleteEnabledUser")
     @Transactional
     public ResponseEntity deleteEnabledUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
@@ -157,13 +157,18 @@ public class AuthController {
             }
             log.info(" username riconosciuto");
             String email = requestBody.get("email").asText();
+            /*
             if (!Tools.isValidEmail(email)) {
-                log.debug("the email { } not have a valid format", email);
+                log.error("the email { } not have a valid format", email);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("email format error");
             }
 
-            log.debug("the email {} have a valid format", email);
+             */
+
+
+            log.info("the email {} have a valid format", email);
             Integer ris = approvedUsersRepo.deleteByEmail(email);
+            log.info("ris {} ris ok", ris);
             return ResponseEntity.ok(ris);
 
         } catch (Exception e) {
@@ -292,7 +297,6 @@ public class AuthController {
                 return ResponseEntity.badRequest().body("field email missing in object user ");
             }
 
-            // FIX: Messaggio di log corretto
             if (!requestBody.get("user").hasNonNull("role")) {
                 log.warn("IP=" + request.getRemoteAddr() + " problem with json object missing role field ");
                 return ResponseEntity.badRequest().body("field role missing in object user ");
@@ -300,7 +304,6 @@ public class AuthController {
 
             String userEmail = requestBody.get("user").get("email").asText();
 
-            // FIX: Messaggio di errore meno dettagliato
             if (!Tools.isValidEmail(userEmail)) {
                 log.error("Invalid email format during updateRoleUser made by IP=" + request.getRemoteAddr());
                 return ResponseEntity.badRequest().body("Invalid email format");

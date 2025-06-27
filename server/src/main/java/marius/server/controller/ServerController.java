@@ -19,6 +19,7 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Class used for manage the routes of Server and Services
@@ -33,6 +34,7 @@ public class ServerController {
     private final LynisRepo lynisRepo;
     private final LogRepo logRepo;
     private static final Logger log = LoggerFactory.getLogger(ServerController.class);
+    private HashSet<String> ipS;
 
     public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo,LogRepo logRepo) {
         this.userRepo = userRepo;
@@ -41,6 +43,24 @@ public class ServerController {
         this.rulesRepo = rulesRepo;
         this.lynisRepo = lynisRepo;
         this.logRepo = logRepo;
+        this.ipS = new HashSet<String>();
+    }
+
+    /**
+     *  add the ip to the list of active nodes
+     * @param ip
+     * @return
+     */
+    public boolean addActiveNode(String ip){
+       return this.ipS.add(ip);
+    }
+
+    public boolean removeActiveNode(String ip){
+        return this.ipS.remove(ip);
+    }
+
+    public boolean containsActiveNode(String ip){
+        return this.ipS.contains(ip);
     }
     /**
      * Return the information about the server indicate by id
@@ -78,13 +98,13 @@ public class ServerController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("invalid ip");
         }
 
-        Optional<Server>  acutalServer = serverRepo.findByIp(actualIp);
-        if(!acutalServer.isPresent()){
+        Optional<Server>  actualServer = serverRepo.findByIp(actualIp);
+        if(!actualServer.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in getServerByIp : ip not found ");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ip not found");
         }
         log.info("username="+actualUsername+" getServerByIp  ="+actualIp);
-        return ResponseEntity.ok(acutalServer.get());
+        return ResponseEntity.ok(actualServer.get());
     }
 
     /**
@@ -129,8 +149,14 @@ public class ServerController {
             log.error("IP="+request.getRemoteAddr()+"failed in getAllServers  : unrecognized username ");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
         }
+
         log.info("username="+email+" getAllServers  ");
-        return ResponseEntity.ok(serverRepo.findAll());
+        List<Server> servers = serverRepo.findAll();
+        for (Server server : servers){
+            server.setState(this.ipS.contains(server.getIp()));
+        }
+
+        return ResponseEntity.ok(servers);
     }
 
     @GetMapping("/getAllLogs")
@@ -552,7 +578,7 @@ public class ServerController {
     public ResponseEntity addService (@RequestBody JsonNode requestBody, HttpServletRequest request){
 
         if(!requestBody.hasNonNull("username")){
-            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing username field");
+            log.warn("IP="+request.getRemoteAddr()+" failed in addService : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
         log.info("username="+request.getRemoteAddr()+" add service  ="+requestBody.get("name"));
@@ -615,7 +641,7 @@ public class ServerController {
         return ResponseEntity.ok(local);
     }
 
-    @GetMapping("/getRulesByIp")
+    @PostMapping("/getRulesByIp")
     public ResponseEntity getRulesByIp (@RequestBody JsonNode requestBody, HttpServletRequest request){
 
         if(!requestBody.hasNonNull("username")){
@@ -627,6 +653,7 @@ public class ServerController {
             log.warn("IP="+request.getRemoteAddr()+" failed in getRulesByIp  : missing ip field ");
             return ResponseEntity.badRequest().body("ip field missing ");
         }
+
         String actualUsername = requestBody.get("username").asText();
         Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
         if(!actualUser.isPresent()){
@@ -653,7 +680,7 @@ public class ServerController {
     public  ResponseEntity addRule(@RequestBody JsonNode requestBody, HttpServletRequest request){
 
         if(!requestBody.hasNonNull("username")){
-            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing username field");
+            log.warn("IP="+request.getRemoteAddr()+" failed in addRule : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
 
@@ -779,7 +806,7 @@ public class ServerController {
     public  ResponseEntity addLynisConfig(@RequestBody JsonNode requestBody, HttpServletRequest request){
 
         if(!requestBody.hasNonNull("username")){
-            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing username field");
+            log.warn("IP="+request.getRemoteAddr()+" failed in addLynisConfig : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
         }
 

@@ -2,6 +2,7 @@ package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PostConstruct;
+import marius.server.controller.ServerController;
 import marius.server.data.Server;
 import marius.server.repo.ServerRepo;
 import org.slf4j.Logger;
@@ -17,9 +18,11 @@ public class LocalAgentRegistration {
     private static final Logger log = LoggerFactory.getLogger(LocalAgentRegistration  .class);
     private final AgentClientPython client;
     private final ServerRepo server;
-    public LocalAgentRegistration(AgentClientPython clientService,ServerRepo server) {
+    private final ServerController serverController;
+    public LocalAgentRegistration(AgentClientPython clientService,ServerRepo server,ServerController serverController) {
         this.client = clientService;
         this.server = server;
+        this.serverController = serverController;
     }
     @PostConstruct
     public void init() {
@@ -55,6 +58,7 @@ public class LocalAgentRegistration {
                                     else{
                                         log.info("Server già aggiunto");
                                     }
+                                    serverController.addActiveNode(ip);
 
                                 }
                             }
