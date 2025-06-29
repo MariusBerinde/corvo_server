@@ -3,13 +3,16 @@ package marius.server.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import marius.server.Tools;
+import marius.server.client.AgentClientPython;
 import marius.server.data.*;
 import marius.server.repo.*;
 
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,16 +37,20 @@ public class ServerController {
     private final LynisRepo lynisRepo;
     private final LogRepo logRepo;
     private static final Logger log = LoggerFactory.getLogger(ServerController.class);
+    private final AgentClientPython agentClientPython;
     private HashSet<String> ipS;
+    private  final AgentClientPython client;
 
-    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo,LogRepo logRepo) {
+    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo, LogRepo logRepo, AgentClientPython client, AgentClientPython agentClientPython) {
         this.userRepo = userRepo;
         this.serverRepo = serverRepo;
         this.serviceRepo = serviceRepo;
         this.rulesRepo = rulesRepo;
         this.lynisRepo = lynisRepo;
         this.logRepo = logRepo;
+        this.client = client;
         this.ipS = new HashSet<String>();
+        this.agentClientPython = agentClientPython;
     }
 
     /**
@@ -737,8 +744,17 @@ public class ServerController {
         return ResponseEntity.ok(local);
     }
 
-    @GetMapping("/getLynisByIp")
+    /**
+     * Returns the list of the skipped tests for the IP agent
+     * @param requestBody
+     * @param request
+     * @return
+     */
+    @PostMapping("/getLynisByIp")
     public ResponseEntity<?> getLynisByIp(@RequestBody JsonNode requestBody, HttpServletRequest request){
+        /**
+         * controls for the integrity of the json objcet
+         */
         if(!requestBody.hasNonNull("username")){
             log.warn("IP="+request.getRemoteAddr()+" failed in getLynisByIp  : missing username field");
             return ResponseEntity.badRequest().body("username field missing ");
@@ -797,7 +813,7 @@ public class ServerController {
 
         response.put("lynis", lynisData);
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(lynisData);
     }
 
 
@@ -844,6 +860,8 @@ public class ServerController {
             return ResponseEntity.badRequest().body("missing auditor field  ");
         }
         String auditor = requestBody.get("lynis").get("auditor").textValue();
+        // is used to check if we can load now the list of skippable tests or later
+        boolean activeServer = this.ipS.contains(ip);
 
         if (requestBody.get("lynis").hasNonNull("listIdSkippedTest")){
             String listIdSkippedTestString = null;
@@ -853,12 +871,28 @@ public class ServerController {
                 for (JsonNode listId : listIdSkippedTest){
                     list.add(listId.asText());
                 }
+
+                if (activeServer){
+                    log.info("addLynisConfig add skipped listIdSkippedTest to local agent");
+                    this.client.setActiveUser(auditor);
+                    this.client.addLynisRules(list);
+                }
                 if(!list.isEmpty()){
                     listIdSkippedTestString = String.join(",", list);
+                    Optional<Lynis>  objDb = lynisRepo.findByIp(ip);
+                    if(!objDb.isPresent()){
+                        Lynis local = new Lynis(auditor,ip,listIdSkippedTestString,activeServer);
+                        lynisRepo.save(local);
+                        return ResponseEntity.ok(local);
+                    }else{
+                       Lynis toUpdate = objDb.get();
+                       toUpdate.setListIdSkippedTest(listIdSkippedTestString);
+                       toUpdate.setAuditor(auditor);
+                       toUpdate.setLoaded(activeServer);
+                       lynisRepo.save(toUpdate);
+                        return ResponseEntity.ok(toUpdate);
+                    }
 
-                    Lynis local = new Lynis(auditor,ip,listIdSkippedTestString);
-                    lynisRepo.save(local);
-                    return ResponseEntity.ok(local);
                 }
 
             }
@@ -866,15 +900,85 @@ public class ServerController {
         }
 
 
-        Lynis local = new Lynis(auditor,ip);
-        lynisRepo.save(local);
-        return ResponseEntity.ok(local);
+
+        Optional<Lynis>  objDb = lynisRepo.findByIp(ip);
+        if(!objDb.isPresent()){
+            Lynis local = new Lynis(auditor,ip,activeServer);
+            lynisRepo.save(local);
+            return ResponseEntity.ok(local);
+        }
+        else {
+            Lynis local =  objDb.get();
+            local.setAuditor(auditor);
+            local.setLoaded(activeServer);
+            lynisRepo.save(local);
+            return ResponseEntity.ok(local);
+        }
     }
 
-    /*
+
+
+
+
     @GetMapping("/getLynisReportByIp")
-    public ResponseEntity getLynisReportByIp(String ip){}
-     */
+    public ResponseEntity<String> getLynisReportByIp(@RequestHeader("username") String username,
+                                                     @RequestHeader("ip") String ip,
+                                                     HttpServletRequest request){
+        if(username == null || username.isEmpty()){
+            log.info("IP="+request.getRemoteAddr()+" failed in getLynisReportByIp : missing username field");
+            return ResponseEntity.badRequest().body("username field missing");
+        }
+        if(ip == null || ip.isEmpty()){
+            log.info("IP="+request.getRemoteAddr()+" failed in getLynisReportByIp : missing ip field"); // Corretto il messaggio
+            return ResponseEntity.badRequest().body("ip field missing"); // Corretto il messaggio
+        }
+        if(!userRepo.existsByUsername(username)){
+            log.info("username=" + username + " not found");
+            return ResponseEntity.badRequest().body("username not valid");
+        }
+        if (!this.ipS.contains(ip)) {
+            log.info("IP=" + request.getRemoteAddr() + " ip " + ip + " not running"); // Corretto il log
+            return ResponseEntity.badRequest().body("ip format not valid"); // Cambiato da internalServerError
+        }
+        log.info(" getLynisReportByIp pamams = IP : ",ip ,"username:",username);
+
+        // Prima di tutto, imposta l'utente attivo sull'agent Python
+        boolean userSet = client.setActiveUser(ip, 5000, username);
+        if (!userSet) {
+            log.error("❌ Impossibile impostare l'utente {} sull'agent {}:5000", username, ip);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Errore: impossibile connettersi all'agent o impostare l'utente");
+        }
+
+        // Ottieni il report Lynis
+        try {
+            String reportContent = client.getLynisReportText(ip, 5000);
+
+            log.info(" getLynisReportByIp pamams = IP : ",ip ,"username:",username);
+
+            if (reportContent != null && !reportContent.trim().isEmpty()) {
+                log.info("✅ Report Lynis ottenuto con successo per utente {} da IP {}", username, ip);
+
+                // Imposta gli headers appropriati per Angular
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.TEXT_PLAIN);
+                headers.set("Content-Disposition", "inline"); // Per visualizzare nel browser
+
+                return ResponseEntity.ok()
+                        .headers(headers)
+                        .body(reportContent);
+            } else {
+                log.warn("⚠️ Report Lynis vuoto o non trovato per utente {} da IP {}", username, ip);
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("❌ Errore durante il recupero del report Lynis per utente {} da IP {}: {}",
+                    username, ip, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Errore interno durante il recupero del report");
+        }
+    }
+
 
 
 }

@@ -50,6 +50,7 @@ CREATE TABLE lynis (
   auditor VARCHAR(255) NOT NULL,
   ip VARCHAR(20) NOT NULL,
   list_id_skipped_test TEXT,
+  loaded BOOLEAN not null default false ,
   CONSTRAINT fk_lynis_ip FOREIGN KEY(ip) REFERENCES public.server(ip)
 );
 

@@ -21,12 +21,15 @@ public class Lynis {
     @Column(name = "list_id_skipped_test", nullable = true)
     private String listIdSkippedTest;
 
+    @Column(nullable = false)
+    private Boolean loaded=false; // indicate if the list of skippable test is loaded on the local machine true means that che list loaded false otherwise
+
     public Lynis() {}
-    public Lynis( String auditor, String ip ) {
-        this.auditor = auditor; this.ip = ip;
+    public Lynis( String auditor, String ip, Boolean loaded) {
+        this.auditor = auditor; this.ip = ip; this.loaded = loaded;
     }
-    public Lynis( String auditor, String ip, String listIdSkippedTest ) {
-        this.auditor = auditor; this.ip = ip; this.listIdSkippedTest = listIdSkippedTest;
+    public Lynis( String auditor, String ip, String listIdSkippedTest, Boolean loaded ) {
+        this.auditor = auditor; this.ip = ip; this.listIdSkippedTest = listIdSkippedTest; this.loaded = loaded;
     }
     public int getId() {
         return id;
