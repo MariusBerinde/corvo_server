@@ -25,8 +25,8 @@ public class Service {
     @Column(nullable = true)
     private int porta;
 
-    @Column(nullable = false)
-    private boolean automatic_start;
+    @Column(name="automatic_start",nullable = false)
+    private boolean automaticStart;
 
     @Column(nullable = false)
     private boolean state ;
@@ -35,11 +35,11 @@ public class Service {
 
     public Service(String ip, String name, String description,  boolean automatic_start, boolean state) {
         this.ip = ip; this.name = name; this.description = description;
-        this.automatic_start = automatic_start; this.state = state;
+        this.automaticStart = automatic_start; this.state = state;
     }
     public Service(String ip, String name, String description, int porta, boolean automatic_start, boolean state) {
         this.ip = ip; this.name = name; this.description = description; this.porta = porta;
-        this.automatic_start = automatic_start; this.state = state;
+        this.automaticStart = automatic_start; this.state = state;
     }
 
     public int getId() {
@@ -82,12 +82,12 @@ public class Service {
         this.porta = porta;
     }
 
-    public boolean isAutomatic_start() {
-        return automatic_start;
+    public boolean isAutomaticStart() {
+        return this.automaticStart;
     }
 
     public void setAutomatic_start(boolean automatic_start) {
-        this.automatic_start = automatic_start;
+        this.automaticStart = automatic_start;
     }
 
     public boolean isState() {

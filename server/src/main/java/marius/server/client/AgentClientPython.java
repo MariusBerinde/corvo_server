@@ -275,4 +275,47 @@ public class AgentClientPython {
     public String getLynisReportText(){
         return getLynisReportText(defaultHost, defaultPort);
     }
+
+    /**
+     * Starts a Lynis scan on the agent
+     * @param host the host address of the agent
+     * @param port the port of the agent
+     * @return true if scan is started successfully, false otherwise
+     */
+    public boolean startLynisScan(String host, int port){
+        String url = String.format("http://%s:%d/start_lynis_scan", host, port);
+        try {
+            AgentResponseDTO response = restTemplate.getForObject(url, AgentResponseDTO.class);
+            boolean success = response != null && "success".equalsIgnoreCase(response.getStatus());
+
+            if (success) {
+                log.info("✅ Scansione Lynis avviata con successo su {}:{}: {}", host, port, response.getMessage());
+            } else if (response != null && "error".equalsIgnoreCase(response.getStatus())) {
+                // Gestisce i diversi tipi di errore
+                if (response.getMessage().contains("già in corso")) {
+                    log.warn("⚠️ Scansione Lynis già in corso su {}:{}: {}", host, port, response.getMessage());
+                } else if (response.getMessage().contains("non riconosciuto")) {
+                    log.error("❌ Utente non autorizzato per scansione Lynis su {}:{}: {}", host, port, response.getMessage());
+                } else {
+                    log.error("❌ Errore nell'avvio scansione Lynis su {}:{}: {}", host, port, response.getMessage());
+                }
+            } else {
+                log.error("❌ Avvio scansione Lynis fallito su {}:{}: nessuna risposta valida", host, port);
+            }
+
+            return success;
+        } catch (RestClientException e){
+            log.error("❌ startLynisScan fallito su {}:{}: {}", host, port, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Starts a Lynis scan on the local agent using default values
+     * @return true if scan is started successfully, false otherwise
+     */
+    public boolean startLynisScan(){
+        return startLynisScan(defaultHost, defaultPort);
+    }
+
 }

@@ -22,7 +22,6 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Class used for manage the routes of Server and Services
@@ -462,7 +461,7 @@ public class ServerController {
      *          5. Verification of server existence with the specified IP
      *
      */
-    @GetMapping("/getServiceByIp")
+    @PostMapping("/getServiceByIp")
     public ResponseEntity getServiceByIp (@RequestBody JsonNode requestBody, HttpServletRequest request){
         if(!requestBody.hasNonNull("username")){
             log.warn("IP="+request.getRemoteAddr()+" failed in getServiceByIp  : missing username field");
@@ -629,7 +628,7 @@ public class ServerController {
             log.warn("IP="+request.getRemoteAddr()+"missing state field in server object in updateRoleUser ");
             return ResponseEntity.badRequest().body("missing state field  ");
         }
-        boolean state = requestBody.get("servic").get("state").asBoolean();
+        boolean state = requestBody.get("service").get("state").asBoolean();
 
         if (!requestBody.get("service").hasNonNull("auto")){
             log.warn("IP="+request.getRemoteAddr()+"missing auto field in server object in updateRoleUser ");
@@ -977,6 +976,114 @@ public class ServerController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Errore interno durante il recupero del report");
         }
+    }
+
+
+    @GetMapping("/startLynisScan")
+    public ResponseEntity startLynisScan(@RequestHeader("username") String username,@RequestHeader("ip") String ip, HttpServletRequest request){
+        if(username == null || username.isEmpty()){
+            log.info("IP="+request.getRemoteAddr()+" failed in StartLyniScan : missing username field");
+            return ResponseEntity.badRequest().body("username field missing");
+        }
+        if(ip == null || ip.isEmpty()){
+            log.info("IP="+request.getRemoteAddr()+" failed in StartLyniScan  : missing ip field"); // Corretto il messaggio
+            return ResponseEntity.badRequest().body("ip field missing"); // Corretto il messaggio
+             }
+        if(!this.ipS.contains(ip)){
+            log.info("IP=" + request.getRemoteAddr() + " ip " + ip + " not running");
+            return ResponseEntity.badRequest().body("client not running");
+        }
+        log.info("startLynisScan: ho preso i parametri e tento di inoltro la scan all'agent python");
+        try {
+            // Imposta l'utente attivo sull'agent target
+            boolean userSet = this.client.setActiveUser(ip, 5000, username);
+            if (!userSet) {
+                log.error("IP={} failed in startLynisScan: unable to set active user {} on agent {}",
+                        request.getRemoteAddr(), username, ip);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Failed to set active user on agent");
+            }
+
+            // Avvia la scansione Lynis
+            boolean scanStarted = this.client.startLynisScan(ip, 5000);
+
+            if (scanStarted) {
+                log.info("IP={} successfully started Lynis scan for user {} on agent {}",
+                        request.getRemoteAddr(), username, ip);
+                return ResponseEntity.ok().body("Lynis scan started successfully");
+            } else {
+                log.warn("IP={} failed to start Lynis scan for user {} on agent {} - scan may already be running or user not authorized",  username, ip);
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body("Failed to start Lynis scan - scan may already be running or user not authorized");
+            }
+
+        } catch (Exception e) {
+            log.error("IP={} error in startLynisScan for user {} on agent {}: {}",
+                    request.getRemoteAddr(), username, ip, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Internal server error occurred while starting Lynis scan");
+        }
+
+    }
+
+
+    /**
+     *  this method update name and or description of the server
+     * @param requestBody  must contain the usename of the user who change the data
+     *                     ip : the IP address of the server
+     *                     name : the new name of the server
+     *                     descr : the new description
+     * @param request
+     * @return true if the data are update in the server , false othervise
+     */
+    @PostMapping("updateDetailServer")
+    ResponseEntity<Boolean> updateDetailServer(@RequestBody JsonNode requestBody, HttpServletRequest request){
+
+        if(!requestBody.hasNonNull("username")){
+            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing username field");
+            return ResponseEntity.badRequest().build();
+        }
+
+        String actualUsername = requestBody.get("username").asText();
+        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"problem in updateDetailServer : unrecognized username ");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if(!requestBody.hasNonNull("ip")){
+            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing ip field");
+            return ResponseEntity.badRequest().build();
+        }
+
+
+        String ip = requestBody.get("ip").asText();
+        Optional<Server> actualServer = serverRepo.findByIp(ip);
+        if(actualServer.isEmpty()){
+            log.error("IP="+request.getRemoteAddr()+"ip not found");
+            return ResponseEntity.badRequest().build();
+        }
+
+        String newName = null;
+        String newDesc = null;
+        if(requestBody.hasNonNull("name")){
+            newName = requestBody.get("name").asText();
+        }
+       if(requestBody.hasNonNull("descr")){
+           newDesc = requestBody.get("descr").asText();
+       }
+       if((newName == null || newName.isEmpty()) &&  (newDesc == null || newDesc.isEmpty()) ){
+           return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+       }
+       if(newName!=null && newName.length()>0){
+           actualServer.get().setName(newName);
+       }
+       if(newDesc!=null && newDesc.length()>0){
+           actualServer.get().setDescr(newDesc);
+       }
+       serverRepo.save(actualServer.get());
+       return ResponseEntity.ok().build();
+
+
     }
 
 
