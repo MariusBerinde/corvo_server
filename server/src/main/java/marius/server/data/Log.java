@@ -21,7 +21,7 @@ public class Log {
     @Column(name = "user_email",nullable = false)
     private String userEmail;
 
-    @Column()
+    @Column(nullable = true)
     private String ip;
 
     @Column()

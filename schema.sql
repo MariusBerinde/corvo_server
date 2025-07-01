@@ -59,7 +59,7 @@ CREATE TABLE log (
   id SERIAL PRIMARY KEY,
   data TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,  
   user_email VARCHAR(255) REFERENCES users(email),  
-  ip VARCHAR(20) NOT NULL,  
+  ip VARCHAR(20) ,  
   service integer,
   descr TEXT NOT NULL  ,
   constraint fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip),

@@ -1,9 +1,6 @@
 package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import marius.server.controller.ServerController;
 import marius.server.data.dto.AgentPingResponse;
 import marius.server.data.dto.AgentResponseDTO;
 import org.slf4j.Logger;

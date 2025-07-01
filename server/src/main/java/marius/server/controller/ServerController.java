@@ -325,7 +325,7 @@ public class ServerController {
         String actualUsername = requestBody.get("username").asText();
         Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
         if(!actualUser.isPresent()){
-            log.error("IP="+request.getRemoteAddr()+"failed in addLogs  : unrecognized username ");
+            log.error("IP="+request.getRemoteAddr()+"failed in addLogs  : unrecognized username for ",actualUsername);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
         }
         if (!requestBody.get("logs").isArray() ) {
@@ -351,31 +351,38 @@ public class ServerController {
            OffsetDateTime offsetDateTime = OffsetDateTime.parse(cleanedLog, formatter);
            Timestamp logTime = Timestamp.valueOf(offsetDateTime.toLocalDateTime());
 
-           if(!logJson.hasNonNull("user")){
+           if(!logJson.hasNonNull("userEmail")){
                log.error("IP="+request.getRemoteAddr()+"failed in addLogs : missing user field in log object ");
                return ResponseEntity.badRequest().body("user field missing in log object of json Array");
            }
 
-           Optional<User> userLog = userRepo.findUserByEmail(logJson.get("user").asText());
+           Optional<User> userLog = userRepo.findUserByEmail(logJson.get("userEmail").asText());
+           log.info("IP="+request.getRemoteAddr()+" addLogs user email: "+logJson.get("userEmail").asText());
 
            if (!userLog.isPresent()){
 
-               log.error("IP="+request.getRemoteAddr()+"failed in addlogs: log.user not found");
+               log.error("IP="+request.getRemoteAddr()+"failed in addlogs: log.user not found = ",logJson.get("userEmail").asText());
                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("log.user not found");
            }
 
-           if (!logJson.hasNonNull("desc")) {
+           if (!logJson.hasNonNull("descr")) {
                log.error("IP="+request.getRemoteAddr()+" failed in addLog : missing log.descr field");
                return ResponseEntity.badRequest().body("log.descr field missing ");
            }
 
-           String descr = logJson.get("desc").asText();
-           if (!logJson.hasNonNull("server")){
-               log.error("IP="+request.getRemoteAddr()+"failed in addLogs : missing server field in log object ");
+           String descr = logJson.get("descr").asText();
+           if (!logJson.hasNonNull("ip")){
+               /*
+               log.error("IP="+request.getRemoteAddr()+"failed in addLogs : missing ip field in log object ");
                return ResponseEntity.badRequest().body("server field missing in log object of json Array");
+                */
+               logs.add(new Log(userLog.get().getEmail(),descr,logTime));
+           }else{
+
+               String server = logJson.get("ip").asText();
+
+               logs.add(new Log(userLog.get().getEmail(),server,descr,logTime));
            }
-           String server = logJson.get("server").asText();
-           logs.add(new Log(userLog.get().getEmail(),server,descr,logTime));
        }
        logRepo.saveAll(logs);
        return ResponseEntity.ok("true");
