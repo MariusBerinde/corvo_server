@@ -27,6 +27,7 @@ import java.util.*;
  * Class used for manage the routes of Server and Services
  */
 @RestController
+@CrossOrigin
 public class ServerController {
 
     private final UserRepo userRepo;
