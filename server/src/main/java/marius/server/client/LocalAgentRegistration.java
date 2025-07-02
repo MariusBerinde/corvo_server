@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import marius.server.controller.ServerController;
+import marius.server.data.Lynis;
 import marius.server.data.Server;
+import marius.server.repo.LynisRepo;
 import marius.server.repo.ServerRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -23,16 +26,18 @@ public class LocalAgentRegistration {
     private final AgentClientPython client;
     private final ServerRepo server;
     private final ServerController serverController;
+    private final LynisRepo lynisRepo;
     private ScheduledExecutorService pingScheduler;
     private volatile boolean agentInitialized = false;
     private volatile String currentServerIp;
     private Long MINUTE_IN_MILLIS = 60000L;
     private Long TIME_TO_WAIT =  MINUTE_IN_MILLIS/2;
 
-    public LocalAgentRegistration(AgentClientPython clientService,ServerRepo server,ServerController serverController) {
+    public LocalAgentRegistration(AgentClientPython clientService,ServerRepo server,ServerController serverController,LynisRepo lynisRepo) {
         this.client = clientService;
         this.server = server;
         this.serverController = serverController;
+        this.lynisRepo = lynisRepo;
         this.pingScheduler  = Executors.newSingleThreadScheduledExecutor(
                 r->{
 
@@ -141,10 +146,56 @@ public class LocalAgentRegistration {
 
             }
 
+            //TODO: to check
+            boolean isListLoaded = checkLoadingList(currentServerIp );
+            if (!isListLoaded) {
+                List<String> toLoadIds = getLoadingList(currentServerIp);
+                boolean ris = client.addLynisRules(toLoadIds);
+                if(ris){
+                    Lynis config = lynisRepo.findByIp(currentServerIp).get();
+                    config.setLoaded(true);
+                    lynisRepo.save(config);
+                }
+            }
+            else{
+                log.info("Agent loading skip load skipped list , list already exists");
+            }
+
 
             //TODO: add get Active services
         }
         return true;
+    }
+
+    /**
+     * Check if the list of skippable elements is loaded on the agent
+     * @param ip  the addrs of the agent
+     * @return true is the list is already marked as loaded , false otherwise
+     */
+    private boolean checkLoadingList(String ip) {
+        log.info("checkLoadingList : check loading list ");
+        Optional<Lynis> config = lynisRepo.findByIp(ip);
+        if (config.isPresent()) {
+
+            boolean isLoaded = config.get().getLoaded();
+            log.info("checkLoadingList : check loading list  = ",isLoaded);
+            return isLoaded;
+        }
+        return true;
+    }
+    private List<String> getLoadingList(String ip) {
+        log.info("getLoadingList : get loading list ");
+        Optional<Lynis> config = lynisRepo.findByIp(ip);
+        List<String> list = new ArrayList<>();
+        if (config.isPresent()) {
+            String[] testIds = config.get().getListIdSkippedTest().split(",");
+            List<String> testIdsList = new ArrayList<>();
+            for (String testId : testIds) {
+                list.add(testId.trim());
+            }
+            return list ;
+        }
+        return list;
     }
 
     private void startPeriodicPing() {
@@ -159,6 +210,18 @@ public class LocalAgentRegistration {
                     // Aggiorna stato server come attivo se necessario
 
                     serverController.addActiveNode(currentServerIp);
+
+                    //TODO: to check
+                    boolean isListLoaded = checkLoadingList(currentServerIp );
+                    if (!isListLoaded) {
+                        List<String> toLoadIds = getLoadingList(currentServerIp);
+                        boolean ris = client.addLynisRules(toLoadIds);
+                        if(ris){
+                            Lynis config = lynisRepo.findByIp(currentServerIp).get();
+                            config.setLoaded(true);
+                            lynisRepo.save(config);
+                        }
+                    }
                 } else {
                     log.warn("Ping periodico failed per server: {}", currentServerIp);
                     serverController.removeActiveNode(currentServerIp);
@@ -169,7 +232,7 @@ public class LocalAgentRegistration {
             handlePingFailure();
         }
 
-        },1,1, TimeUnit.SECONDS);
+        },5,5, TimeUnit.MINUTES);
     }
 
     private void handlePingFailure() {

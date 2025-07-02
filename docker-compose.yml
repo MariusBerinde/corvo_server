@@ -1,0 +1,91 @@
+services:
+  postgres:
+    container_name: database 
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    ports:
+      - "5432:5432"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - app_network
+    ports:
+      - "8081:80"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+  corvo-server:
+    container_name: springboot
+    image: altairuchica/corvo-back
+    environment:
+      # Database connection (usando il nome del servizio postgres)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # Server configuration
+      SERVER_PORT: 8083
+
+      # Agent configuration (per comunicare con l'agent Python sulla macchina host)
+      AGENT_LOCAL_HOST: host.docker.internal
+      AGENT_LOCAL_PORT: ${AGENT_LOCAL_PORT:-5000}
+
+      # JVM options (opzionale, per ottimizzazioni)
+      JAVA_OPTS: "-Xmx512m -Xms256m"
+    networks:
+      - app_network
+    ports:
+      - "8083:8083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+networks:
+  app_network:
+    driver: bridge

@@ -27,7 +27,7 @@ services:
       retries: 3
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
@@ -37,7 +37,7 @@ services:
     networks:
       - app_network
     ports:
-      - "8080:80"
+      - "8090:80"
     deploy:
       replicas: 1
       placement:

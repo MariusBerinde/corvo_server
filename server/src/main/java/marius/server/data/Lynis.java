@@ -58,4 +58,12 @@ public class Lynis {
     public void setAuditor(String auditor) {
         this.auditor = auditor;
     }
+
+    public Boolean getLoaded() {
+        return loaded;
+    }
+
+    public void setLoaded(Boolean loaded) {
+        this.loaded = loaded;
+    }
 }

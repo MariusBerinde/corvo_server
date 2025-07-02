@@ -161,12 +161,6 @@ public class ToolTests {
             System.out.println("non array");
         }
 
-      Lynis obj;
-        if(row == "")
-            obj = new Lynis(auditor,ip);
-        else
-            obj = new Lynis(auditor,ip,row);
-        System.out.println(obj.toString());
     }
 
     @Test

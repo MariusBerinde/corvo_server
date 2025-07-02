@@ -143,7 +143,7 @@ public class AgentClientPython {
     }
 
     /**
-     * Returns the logs of the local server using default values
+     * Returns the logs of the local server using default values/se
      * @return a json node
      */
     public JsonNode getLogsServer(){

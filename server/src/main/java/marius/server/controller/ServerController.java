@@ -881,7 +881,7 @@ public class ServerController {
                 if (activeServer){
                     log.info("addLynisConfig add skipped listIdSkippedTest to local agent");
                     this.client.setActiveUser(auditor);
-                    this.client.addLynisRules(list);
+                    this.client.addLynisRules(ip,5000,list);
                 }
                 if(!list.isEmpty()){
                     listIdSkippedTestString = String.join(",", list);
