@@ -59,19 +59,27 @@ public class AuthController {
                 return ResponseEntity.badRequest().body("username not auth ");
             }
             log.info(" username riconosciuto");
+
             String email = requestBody.get("email").asText();
+
             if (!Tools.isValidEmail(email)) {
                 log.debug("the email { } not have a valid format", email);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("email format error");
             }
-            log.debug("the email {} have a valid format", email);
-            ApprovedUsers tmp = new ApprovedUsers(email);
-            System.out.println("AuthController::enableUserRegistration Approved Users: " + tmp);
-            approvedUsersRepo.save(tmp);
+            Optional<ApprovedUsers> user =approvedUsersRepo.findByEmail(email);
+            if(!user.isPresent()){
+
+                log.debug("the email {} have a valid format", email);
+                ApprovedUsers tmp = new ApprovedUsers(email);
+                System.out.println("AuthController::enableUserRegistration Approved Users: " + tmp);
+                approvedUsersRepo.save(tmp);
+                return ResponseEntity.ok("true");
+            }
             return ResponseEntity.ok("true");
 
+
         } catch (Exception e) {
-            log.error("IP=" + request.getRemoteAddr() + "Problema con richiesta");
+            log.error("IP=" + request.getRemoteAddr() + "Problema con richiesta = ",e.toString());
             return ResponseEntity.badRequest().body("missing 'username' or 'email'");
         }
 
@@ -198,15 +206,6 @@ public class AuthController {
     @PostMapping("/addUser")
     public ResponseEntity addUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
-            if (!requestBody.hasNonNull("username")) {
-                log.warn("IP=" + request.getRemoteAddr() + "tried to add a new user");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("field username missing ");
-            }
-            String creator = requestBody.get("username").asText();
-            User creatorUser = userRepo.findUserByUsername(creator).orElse(null);
-            if (creatorUser == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User creator not registered");
-            }
 /*
             if (creatorUser.getRole() != RoleEnum.SUPERVISOR) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only supervisors can create users");

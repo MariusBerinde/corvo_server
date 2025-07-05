@@ -1,9 +1,9 @@
 package marius.server.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.transaction.Transactional;
 import marius.server.Tools;
 import marius.server.client.AgentClientPython;
+import marius.server.client.LocalAgentRegistration;
 import marius.server.data.*;
 import marius.server.repo.*;
 
@@ -23,6 +23,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+//TODO: if requuset fail make ip inaviable
 /**
  * Class used for manage the routes of Server and Services
  */
@@ -36,12 +37,14 @@ public class ServerController {
     private final RulesRepo rulesRepo;
     private final LynisRepo lynisRepo;
     private final LogRepo logRepo;
+    private final LocalAgentRegistration agentRegistration;
     private static final Logger log = LoggerFactory.getLogger(ServerController.class);
-    private final AgentClientPython agentClientPython;
-    private HashSet<String> ipS;
+    private HashMap<String,Server> servers;
     private  final AgentClientPython client;
 
-    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo, RulesRepo rulesRepo, LynisRepo lynisRepo, LogRepo logRepo, AgentClientPython client, AgentClientPython agentClientPython) {
+    public ServerController(UserRepo userRepo, ServerRepo serverRepo, ServiceRepo serviceRepo,
+                            RulesRepo rulesRepo, LynisRepo lynisRepo, LogRepo logRepo,
+                            AgentClientPython client,  LocalAgentRegistration agentRegistration) {
         this.userRepo = userRepo;
         this.serverRepo = serverRepo;
         this.serviceRepo = serviceRepo;
@@ -49,26 +52,20 @@ public class ServerController {
         this.lynisRepo = lynisRepo;
         this.logRepo = logRepo;
         this.client = client;
-        this.ipS = new HashSet<String>();
-        this.agentClientPython = agentClientPython;
+        this.agentRegistration = agentRegistration;
+        this.servers = new HashMap<>();
     }
 
     /**
-     *  add the ip to the list of active nodes
-     * @param ip
+     *  add the server to the list of active nodes
+     * @param server
      * @return
      */
-    public boolean addActiveNode(String ip){
-       return this.ipS.add(ip);
-    }
+    public boolean addActiveNode(Server server) { return this.servers.putIfAbsent(server.getIp(), server) == null; }
 
-    public boolean removeActiveNode(String ip){
-        return this.ipS.remove(ip);
-    }
+    public boolean removeActiveNode(String ip){ return this.servers.remove(ip) != null; }
 
-    public boolean containsActiveNode(String ip){
-        return this.ipS.contains(ip);
-    }
+    public boolean containsActiveNode(String ip){ return this.servers.containsKey(ip); }
     /**
      * Return the information about the server indicate by id
      * @param requestBody JSON object containing user credentials:
@@ -114,40 +111,11 @@ public class ServerController {
         return ResponseEntity.ok(actualServer.get());
     }
 
-    /**
-     * Retrieves all servers from the database after user authentication.
-     *
-     * <p>This endpoint validates the user's identity by checking the provided username
-     * against the user repository. Only authenticated users can access the server list.</p>
-     *
-     * @param requestBody JSON object containing the user credentials. Must include:
-     *                   <ul>
-     *                   <li><strong>username</strong> (String, required): The username of the requesting user</li>
-     *                   </ul>
-     * @param request HTTP servlet request object used for logging the client's IP address
-     *
-     * @return ResponseEntity containing:
-     *         <ul>
-     *         <li><strong>200 OK</strong>: List of all servers if authentication succeeds</li>
-     *         <li><strong>400 Bad Request</strong>: If the username field is missing from the request body</li>
-     *         <li><strong>401 Unauthorized</strong>: If the provided username is not found in the system</li>
-     *         </ul>
-     *
-     * @throws SecurityException if there are issues with user authentication
-     *
-     * @apiNote This method logs all authentication attempts including:
-     *          <ul>
-     *          <li>Warning logs for missing username field</li>
-     *          <li>Error logs for unrecognized usernames</li>
-     *          <li>Info logs for successful requests</li>
-     *          </ul>
-     *
-     */
     @GetMapping("/getAllServers")
     public ResponseEntity getAllServers(@RequestHeader("email") String email, HttpServletRequest request){
         if(email == null || email.isEmpty()){
             log.info("IP="+request.getRemoteAddr()+" failed in getAllServers : missing username field");
-            return ResponseEntity.badRequest().body("username field missing ");
+            return ResponseEntity.badRequest().body("email field missing ");
         }
         log.info(" getAllServers email="+email);
 
@@ -160,7 +128,7 @@ public class ServerController {
         log.info("username="+email+" getAllServers  ");
         List<Server> servers = serverRepo.findAll();
         for (Server server : servers){
-            server.setState(this.ipS.contains(server.getIp()));
+            server.setState(this.servers.containsKey(server.getIp()));
         }
 
         return ResponseEntity.ok(servers);
@@ -274,7 +242,7 @@ public class ServerController {
 		}
     if(requestBody.get("log").hasNonNull("service")){
         Integer service = Integer.valueOf(requestBody.get("log").get("service").asInt());
-        Optional<Service> localService = serviceRepo.findById(service);
+        Optional<AgentService> localService = serviceRepo.findById(service);
         if(!localService.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in addLog  : service not found");
             return ResponseEntity.badRequest().body("service not found");
@@ -389,59 +357,6 @@ public class ServerController {
        return ResponseEntity.ok("true");
     }
 
-    @PostMapping("/addServer")
-    public ResponseEntity addServer(@RequestBody JsonNode requestBody, HttpServletRequest request){
-        if(!requestBody.hasNonNull("username")){
-            log.warn("IP="+request.getRemoteAddr()+" failed in getServerByIp : missing username field");
-            return ResponseEntity.badRequest().body("username field missing ");
-        }
-
-        String actualUsername = requestBody.get("username").asText();
-        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
-        if(!actualUser.isPresent()){
-            log.error("IP="+request.getRemoteAddr()+"problem in addServer : unrecognized username ");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
-        }
-
-        if(!requestBody.hasNonNull("server")){
-            log.warn("IP="+request.getRemoteAddr()+"missing server field in object in updateRoleUser ");
-            return ResponseEntity.badRequest().body("missing server field  ");
-        }
-
-        if (!requestBody.get("server").hasNonNull("ip")){
-            log.warn("IP="+request.getRemoteAddr()+"missing ip field in server object in updateRoleUser ");
-            return ResponseEntity.badRequest().body("missing ip field  ");
-        }
-
-        String ip = requestBody.get("server").get("ip").asText();
-
-        if (!Tools.isValidIp(ip)){
-            log.warn("IP="+request.getRemoteAddr()+"ip not valid");
-            return ResponseEntity.badRequest().body("ip not valid");
-        }
-
-        if (!requestBody.get("server").hasNonNull("name")){
-            log.warn("IP="+request.getRemoteAddr()+"missing name field in server object in updateRoleUser ");
-            return ResponseEntity.badRequest().body("missing name field  ");
-        }
-        String name = requestBody.get("server").get("name").asText();
-
-        if (!requestBody.get("server").hasNonNull("state")){
-            log.warn("IP="+request.getRemoteAddr()+"missing state field in server object in updateRoleUser ");
-            return ResponseEntity.badRequest().body("missing state field  ");
-        }
-        boolean state = requestBody.get("server").get("state").asBoolean();
-
-        if (!requestBody.get("server").hasNonNull("descr")){
-            log.warn("IP="+request.getRemoteAddr()+"missing descr field in server object in updateRoleUser ");
-            return ResponseEntity.badRequest().body("missing descr field  ");
-        }
-
-        String descr = requestBody.get("server").get("descr").asText();
-        Server local = new Server(ip, state, name, descr);
-        serverRepo.save(local);
-        return ResponseEntity.ok(local);
-    }
 
 
     /**
@@ -577,7 +492,7 @@ public class ServerController {
         }
         String actualName = requestBody.get("name").asText();
 
-        Optional<Service>  actualService = serviceRepo.findByName(actualName);
+        Optional<AgentService>  actualService = serviceRepo.findByName(actualName);
         if(!actualService.isPresent()){
             log.error("IP="+request.getRemoteAddr()+"failed in ResponseEntity : service not found ");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("service not found");
@@ -650,7 +565,7 @@ public class ServerController {
         }
 
         String descr = requestBody.get("service").get("descr").asText();
-        Service local = new Service(ip,name,descr,auto,state);
+        AgentService local = new AgentService(ip,name,descr,auto,state);
         serviceRepo.save(local);
         return ResponseEntity.ok(local);
     }
@@ -868,7 +783,7 @@ public class ServerController {
         }
         String auditor = requestBody.get("lynis").get("auditor").textValue();
         // is used to check if we can load now the list of skippable tests or later
-        boolean activeServer = this.ipS.contains(ip);
+        boolean activeServer = this.servers.containsKey(ip);
 
         if (requestBody.get("lynis").hasNonNull("listIdSkippedTest")){
             String listIdSkippedTestString = null;
@@ -882,7 +797,7 @@ public class ServerController {
                 if (activeServer){
                     log.info("addLynisConfig add skipped listIdSkippedTest to local agent");
                     this.client.setActiveUser(auditor);
-                    this.client.addLynisRules(ip,5000,list);
+                    this.client.addLynisRules(ip,5000,list); //TODO:
                 }
                 if(!list.isEmpty()){
                     listIdSkippedTestString = String.join(",", list);
@@ -943,7 +858,7 @@ public class ServerController {
             log.info("username=" + username + " not found");
             return ResponseEntity.badRequest().body("username not valid");
         }
-        if (!this.ipS.contains(ip)) {
+        if (!this.servers.containsKey(ip)) {
             log.info("IP=" + request.getRemoteAddr() + " ip " + ip + " not running"); // Corretto il log
             return ResponseEntity.badRequest().body("ip format not valid"); // Cambiato da internalServerError
         }
@@ -997,7 +912,7 @@ public class ServerController {
             log.info("IP="+request.getRemoteAddr()+" failed in StartLyniScan  : missing ip field"); // Corretto il messaggio
             return ResponseEntity.badRequest().body("ip field missing"); // Corretto il messaggio
              }
-        if(!this.ipS.contains(ip)){
+        if(!this.servers.containsKey(ip)){
             log.info("IP=" + request.getRemoteAddr() + " ip " + ip + " not running");
             return ResponseEntity.badRequest().body("client not running");
         }
@@ -1090,7 +1005,99 @@ public class ServerController {
        }
        serverRepo.save(actualServer.get());
        return ResponseEntity.ok().build();
+    }
 
+    /**
+     * Add the agent python to the server
+     * @param requestBody a json file with
+     *                    - ip : the ip of the agent
+     *                    - name: the name of the agent
+     *                    - descr : the description of the agent
+     *                    - port : the port where connct
+     * @return
+     */
+    @PostMapping("/addAgent")
+    ResponseEntity addServer(@RequestBody JsonNode requestBody,HttpServletRequest request){
+        if(!requestBody.hasNonNull("ip")){
+            log.info("ip field missing in json object in AddServer");
+            return ResponseEntity.badRequest().build();
+        }
+        String ip = requestBody.get("ip").asText();
+        int port;
+        if(!requestBody.hasNonNull("port")){
+            log.info("port field missing in json object in AddServer");
+            port = 5000;
+        }
+        else
+            port = requestBody.get("port").asInt();
+        String name ;
+        if (!requestBody.hasNonNull("name")) {
+            log.info("name field missing in json object in AddServer");
+            name = "todo";
+        }
+        else
+            name = requestBody.get("name").asText();
+        String desc ;
+        if (!requestBody.hasNonNull("descr")) {
+            log.info("descr field missing in json object in AddServer");
+            desc = "todo";
+        }
+        else
+            desc = requestBody.get("descr").asText();
+       Server local = new Server(ip,true,name,desc,port);
+       if ( !servers.containsKey(ip)){
+           this.servers.put(ip,local);
+       }
+        boolean registrationStarted = agentRegistration.registerAgent(ip, port);
+
+        if (registrationStarted) {
+            log.info("Processo di registrazione avviato per agente {}:{}", ip, port);
+        } else {
+            log.error("Impossibile avviare registrazione per agente {}:{}", ip, port);
+        }      // Avvia nuovo thread per gestion comunicazione con questo server
+
+
+      return  ResponseEntity.ok().body(local);
+
+    }
+
+
+    @PostMapping("/getStatusServer")
+    ResponseEntity getStatusServices(@RequestBody JsonNode requestBody,HttpServletRequest request){
+        log.info("getStatusServices(requestBody:{})", requestBody);
+
+        if(!requestBody.hasNonNull("username")){
+            log.warn("IP="+request.getRemoteAddr()+" failed in getStatusServer : missing username field");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+
+        if(!requestBody.hasNonNull("ip")){
+            log.warn("IP="+request.getRemoteAddr()+" failed in getStaustServer : missing ip field ");
+            return ResponseEntity.badRequest().body("ip field missing ");
+        }
+        String actualUsername = requestBody.get("username").asText();
+        Optional<User> actualUser = userRepo.findUserByUsername(actualUsername);
+        if(!actualUser.isPresent()){
+            log.error("IP="+request.getRemoteAddr()+"failed in getServerByIp : unrecognized username ");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("unrecognized username");
+        }
+        String actualIp = requestBody.get("ip").asText();
+        if (!Tools.isValidIp(actualIp)){
+            log.error("IP="+request.getRemoteAddr()+"failed in getStatusServer : invalid ip ");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("invalid ip");
+        }
+
+        if(this.servers.containsKey(actualIp)){
+            log.info(" getStatusServices , server running so get data diretly form datasource");
+            Server server = this.servers.get(actualIp);
+            List<AgentService> services = client.getServiceStatus(server.getIp(),server.getPort());
+            return ResponseEntity.ok(services);
+        }
+        else{
+            log.info(" getStatusServices , server down data from db");
+            List<AgentService> services = serviceRepo.findByIp(actualIp);
+            return ResponseEntity.ok(services);
+        }
 
     }
 

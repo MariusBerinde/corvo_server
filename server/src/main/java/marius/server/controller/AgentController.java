@@ -23,6 +23,7 @@ public class AgentController {
 
     @GetMapping("/pingAgent")
     public ResponseEntity<String> pingAgent(){
+        log.info("ping agent to client ");
         boolean status = client.pingLocalAgent();
         return status ? ResponseEntity.ok().body("Up"): ResponseEntity.notFound().build();
     }
@@ -91,5 +92,7 @@ public class AgentController {
         }
         return ResponseEntity.ok().body(data);
     }
+
+
 
 }

@@ -7,7 +7,7 @@ import lombok.Data;
 @Data
 @Entity
 @Table(name = "service")
-public class Service {
+public class AgentService {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column()
@@ -22,8 +22,8 @@ public class Service {
     @Column(nullable = true)
     private String description;
 
-    @Column(nullable = true)
-    private int porta;
+    @Column(name = "porta",nullable = false)
+    private Integer porta;
 
     @Column(name="automatic_start",nullable = false)
     private boolean automaticStart;
@@ -31,13 +31,13 @@ public class Service {
     @Column(nullable = false)
     private boolean state ;
 
-    public Service() {}
+    public AgentService() {}
 
-    public Service(String ip, String name, String description,  boolean automatic_start, boolean state) {
+    public AgentService(String ip, String name, String description, boolean automatic_start, boolean state) {
         this.ip = ip; this.name = name; this.description = description;
         this.automaticStart = automatic_start; this.state = state;
     }
-    public Service(String ip, String name, String description, int porta, boolean automatic_start, boolean state) {
+    public AgentService(String ip, String name, String description, int porta, boolean automatic_start, boolean state) {
         this.ip = ip; this.name = name; this.description = description; this.porta = porta;
         this.automaticStart = automatic_start; this.state = state;
     }

@@ -1,5 +1,6 @@
 package marius.server.data;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -25,9 +26,13 @@ public class Server {
     @Column
     private String descr;
 
+    @Transient
+    @JsonIgnore //is user for exclude port for the serialization
+    private int port;
+
     public Server(){}
-    public Server( String ip, boolean state, String name, String descr) {
-         this.ip = ip; this.state = state; this.name = name; this.descr = descr;
+    public Server( String ip, boolean state, String name, String descr, int port) {
+         this.ip = ip; this.state = state; this.name = name; this.descr = descr; this.port = port;
     }
 
     public int getId() {
@@ -68,5 +73,11 @@ public class Server {
 
     public void setDescr(String descr) {
         this.descr = descr;
+    }
+    public void setPort(int port) {
+        this.port = port;
+    }
+    public int getPort() {
+        return port;
     }
 }

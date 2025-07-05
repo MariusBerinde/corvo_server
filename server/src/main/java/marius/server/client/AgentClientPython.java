@@ -1,8 +1,11 @@
 package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import marius.server.data.AgentService;
 import marius.server.data.dto.AgentPingResponse;
 import marius.server.data.dto.AgentResponseDTO;
+import marius.server.data.dto.ServiceStatusResponseDTO;
+import marius.server.repo.ServiceRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,11 +13,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class AgentClientPython {
@@ -27,9 +26,7 @@ public class AgentClientPython {
     private RestTemplate restTemplate;
     private static final Logger log = LoggerFactory.getLogger(AgentClientPython.class);
 
-    public AgentClientPython(RestTemplate restTemplate){
-        this.restTemplate = restTemplate;
-    }
+    public AgentClientPython(RestTemplate restTemplate, ServiceRepo serviceRepo) { this.restTemplate = restTemplate; }
 
     /**
      * Method that make a http get request to the agent python
@@ -38,6 +35,7 @@ public class AgentClientPython {
      * @return true if the status of the request is successful
      */
     public boolean pingAgent(String host, int port){
+        log.info("pingAgent(host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/ping", host, port);
         try {
             AgentPingResponse response = restTemplate.getForObject(url, AgentPingResponse.class);
@@ -65,6 +63,8 @@ public class AgentClientPython {
      * @return true if username is set, false otherwise
      */
     public boolean setActiveUser(String host, int port, String username){
+
+        log.info("setActiveUser (host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/set_user", host, port);
         // Crea il JSON come stringa
         String jsonBody = String.format("{\"name\":\"%s\"}", username);
@@ -132,6 +132,7 @@ public class AgentClientPython {
      * @return a json node
      */
     public JsonNode getLogsServer(String host, int port){
+        log.info("getLogsServer(host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/get_logs", host, port);
         try {
             JsonNode response = restTemplate.getForObject(url, JsonNode.class);
@@ -157,6 +158,7 @@ public class AgentClientPython {
      * @return a json node
      */
     public JsonNode getLynisReport(String host, int port){
+        log.info("getLynisReport(host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/get_report_content", host, port);
         try {
             JsonNode response = restTemplate.getForObject(url, JsonNode.class);
@@ -183,6 +185,7 @@ public class AgentClientPython {
      * @return true if rules are added successfully, false otherwise
      */
     public boolean addLynisRules(String host, int port, List<String> rules){
+        log.info("addLynisRules(host: {}, port: {})", host, port);
         if(host == null || host.isEmpty()){
             host = defaultHost;
         }
@@ -280,6 +283,7 @@ public class AgentClientPython {
      * @return true if scan is started successfully, false otherwise
      */
     public boolean startLynisScan(String host, int port){
+        log.info("startLynisScan(host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/start_lynis_scan", host, port);
         try {
             AgentResponseDTO response = restTemplate.getForObject(url, AgentResponseDTO.class);
@@ -313,6 +317,49 @@ public class AgentClientPython {
      */
     public boolean startLynisScan(){
         return startLynisScan(defaultHost, defaultPort);
+    }
+
+
+    /**
+     * Gets the status of various services and maps them to Services entities
+     * @param host the host address of the agent
+     * @param port the port of the agent
+     * @return a list of Services entities representing each service's status
+     */
+    public List<AgentService> getServiceStatus(String host, int port) {
+        log.info("getServiceStatus(host: {}, port: {})", host, port);
+        String url = String.format("http://%s:%d/get_service_status", host, port);
+        try {
+            ServiceStatusResponseDTO response = restTemplate.getForObject(url, ServiceStatusResponseDTO.class);
+            if (response != null && "success".equalsIgnoreCase(response.getStatus())) {
+                log.info("✅ Stato servizi ottenuto da {}:{}", host, port);
+
+                List<AgentService> servicesList = new ArrayList<>();
+                for (Map<String, Boolean> serviceEntry : response.getStatusServices()) {
+                    for (Map.Entry<String, Boolean> entry : serviceEntry.entrySet()) {
+                        String serviceName = entry.getKey().trim();
+                        boolean state = entry.getValue();
+                        if (host.equals( "127.0.0.1")){
+                            log.info("getServiceStatus forzo l'ip a quello della wsl");
+                            host = "172.22.59.12";
+                        }
+
+                        AgentService service = new AgentService(host, serviceName, "todo", port, false, state);
+
+
+                        servicesList.add(service);
+                    }
+                }
+
+                return servicesList;
+            } else {
+                log.error( "⚠️ Risposta non valida da getServiceStatus su {}:{}: {}", host, port, response != null ? response.getMessage() : "nessuna risposta");
+            }
+        } catch (RestClientException e){
+            log.error("❌ getServiceStatus fallito su {}:{}: {}", host, port, e.getMessage());
+        }
+
+        return Collections.emptyList();
     }
 
 }

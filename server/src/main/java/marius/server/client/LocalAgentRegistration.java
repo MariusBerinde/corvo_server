@@ -1,279 +1,360 @@
 package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import marius.server.controller.ServerController;
+import marius.server.data.AgentService;
 import marius.server.data.Lynis;
 import marius.server.data.Server;
 import marius.server.repo.LynisRepo;
 import marius.server.repo.ServerRepo;
+import marius.server.repo.ServiceRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 
 @Component
+/**
+ * Class used for manage the local agent
+ */
 public class LocalAgentRegistration {
 
-    private static final Logger log = LoggerFactory.getLogger(LocalAgentRegistration  .class);
+    private static final Logger log = LoggerFactory.getLogger(LocalAgentRegistration.class);
     private final AgentClientPython client;
-    private final ServerRepo server;
+    private final ServerRepo serverRepo;
+    public static ServiceRepo serviceRepo;
     private final ServerController serverController;
     private final LynisRepo lynisRepo;
-    private ScheduledExecutorService pingScheduler;
-    private volatile boolean agentInitialized = false;
-    private volatile String currentServerIp;
-    private Long MINUTE_IN_MILLIS = 60000L;
-    private Long TIME_TO_WAIT =  MINUTE_IN_MILLIS/2;
+    private final Map<String, ScheduledFuture<?>> pingSchedulers = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService executorService;
+    private final Long MINUTE_IN_MILLIS = 60000L;
+    private final Long TIME_TO_WAIT = MINUTE_IN_MILLIS / 2;
 
-    public LocalAgentRegistration(AgentClientPython clientService,ServerRepo server,ServerController serverController,LynisRepo lynisRepo) {
-        this.client = clientService;
-        this.server = server;
+    public LocalAgentRegistration(AgentClientPython client, ServerRepo serverRepo,
+                                  @Lazy ServerController serverController, LynisRepo lynisRepo,ServiceRepo serviceRepo) {
+        this.client = client;
+        this.serverRepo = serverRepo;
         this.serverController = serverController;
         this.lynisRepo = lynisRepo;
-        this.pingScheduler  = Executors.newSingleThreadScheduledExecutor(
-                r->{
+        this.serviceRepo = serviceRepo;
+        this.executorService = Executors.newScheduledThreadPool(10, r -> {
+            Thread t = new Thread(r, "AgentManager-" + System.currentTimeMillis());
+            t.setDaemon(true);
+            return t;
+        });
+    }
 
-                   Thread t = new Thread(r,"PingScheduler Thread");
-                    t.setDaemon(true);
-                    return t;
-                }
 
-        );
+
+    /**
+     * Registra un nuovo agente e avvia il processo di inizializzazione
+     * @param ip IP dell'agente
+     * @param port Porta dell'agente
+     * @return true se la registrazione è avviata con successo
+     */
+    public boolean registerAgent(String ip, int port) {
+        log.info("Registrazione nuovo agente: {}:{}", ip, port);
+
+        // Verifica se l'agente è già registrato
+        if (pingSchedulers.containsKey(ip)) {
+            log.warn("Agente {} già registrato", ip);
+            return false;
+        }
+
+        // Avvia il processo di inizializzazione in un thread separato
+        CompletableFuture.runAsync(() -> initAgent(ip, port), executorService)
+                .exceptionally(throwable -> {
+                    log.error("Errore durante l'inizializzazione dell'agente {}: ", ip, throwable);
+                    return null;
+                });
+
+        return true;
     }
 
     /**
-     * used for init the process
+     * Inizializza la comunicazione con un agente specifico
      */
-    @PostConstruct
-    public void init() {
-        log.info("Start ping to python agent...");
-        new Thread(()->{
-            initAgent();
-        },"agent-init").start();
+    private void initAgent(String ip, int port) {
+        log.info("Inizializzazione agente {}:{}", ip, port);
 
-    }
+        boolean connectionEstablished = false;
+        int retryCount = 0;
+        int maxRetries = 10;
 
-    private void initAgent() {
-        boolean risPing = false;
-        while (!risPing && !Thread.currentThread().isInterrupted()) {
-            risPing = client.pingLocalAgent();
-            if (risPing) {
-                if (setupAgent()){
-                    agentInitialized = true;
-                    startPeriodicPing();
-                    break;
+        while (!connectionEstablished && retryCount < maxRetries && !Thread.currentThread().isInterrupted()) {
+            try {
+                boolean pingResult = client.pingAgent(ip, port);
+                if (pingResult) {
+                    log.info("Ping riuscito per agente {}", ip);
 
-                }else{
-                    log.info("Agent ping failed");
-                    try{
-                        //Thread.sleep(50000);
-                        Thread.sleep(TIME_TO_WAIT);
-                    }catch (InterruptedException e){
-                        Thread.currentThread().interrupt();
-                        return;
+                    if (setupAgent(ip, port)) {
+                        connectionEstablished = true;
+                        startPeriodicPing(ip, port);
+                        log.info("Agente {} inizializzato con successo", ip);
+                    } else {
+                        log.warn("Setup fallito per agente {}", ip);
                     }
+                } else {
+                    log.warn("Ping fallito per agente {}, tentativo {}/{}", ip, retryCount + 1, maxRetries);
                 }
-            }else{
 
-                log.info("Agent ping failed");
-                try{
-                    //Thread.sleep(50000);
+                if (!connectionEstablished) {
+                    retryCount++;
                     Thread.sleep(TIME_TO_WAIT);
+                }
 
-                }catch (InterruptedException e){
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.info("Inizializzazione agente {} interrotta", ip);
+                return;
+            } catch (Exception e) {
+                log.error("Errore durante inizializzazione agente {}: ", ip, e);
+                retryCount++;
+                try {
+                    Thread.sleep(TIME_TO_WAIT);
+                } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     return;
                 }
-
             }
+        }
 
+        if (!connectionEstablished) {
+            log.error("Impossibile stabilire connessione con agente {} dopo {} tentativi", ip, maxRetries);
+            serverController.removeActiveNode(ip);
         }
     }
 
-
-
     /**
-     *  Used for make the setup for the first meeting between the java server and the
-     *  python agent
-     * @return true when the first meeting is made
+     * Method that sets a java user for the agent identified with IP and Port
+     * @param ip
+     * @param port
+     * @return
      */
-    private boolean setupAgent() {
-        boolean setUser = client.setActiveUser("java");
-
-        if (setUser) {
-            log.info("Set user ok");
-            JsonNode json = client.getStatusServer();
-            /**
-             * manage status server
-             */
-            if (json != null) {
-                if(json.hasNonNull("message")){
-                    if(json.get("message").isArray()){
-                        JsonNode listMsg = json.get("message");
-                        if(listMsg.isEmpty()){
-                            log.info("msg è un array vuoto");
-                        }
-
-                        List<String> msg = new ArrayList<>();
-                        for (JsonNode data: json.get("message")){
-                            msg.add(data.asText());
-                        }
-                        String ip = msg.get(0).replaceAll("\\n","").trim();
-                        log.info("Get status server: {}", ip);
-
-                        /**
-                         * first time encontered server with ip
-                         */
-                        if(server.findByIp(ip).isEmpty()){
-                            server.save(new Server(ip,true,"todo","todo"));
-                        }
-                        else{
-                            log.info("Server già aggiunto");
-                        }
-                        serverController.addActiveNode(ip);
-                        this.currentServerIp = ip;
-
-                    }
-                }
-
+    private boolean setupAgent(String ip, int port) {
+        try {
+            // Imposta l'utente attivo
+            boolean setUser = client.setActiveUser(ip, port, "java");
+            if (!setUser) {
+                log.error("Impossibile impostare utente attivo per agente {}", ip);
+                return false;
             }
 
-            //TODO: to check
-            boolean isListLoaded = checkLoadingList(currentServerIp );
-            if (!isListLoaded) {
-                List<String> toLoadIds = getLoadingList(currentServerIp);
-                boolean ris = client.addLynisRules(toLoadIds);
-                if(ris){
-                    Lynis config = lynisRepo.findByIp(currentServerIp).get();
-                    config.setLoaded(true);
-                    lynisRepo.save(config);
-                }
-            }
-            else{
-                log.info("Agent loading skip load skipped list , list already exists");
+            log.info("Utente impostato con successo per agente {}", ip);
+
+            // Ottieni lo status del server
+            JsonNode statusJson = client.getStatusServer(ip, port);
+            if (statusJson != null && statusJson.hasNonNull("message")) {
+                processServerStatus(statusJson, ip, port);
             }
 
+            List<AgentService> services = client.getServiceStatus(ip,port);
+            if (services != null && !services.isEmpty()) {
+                this.serviceRepo.saveAll(services);
+            }
 
-            //TODO: add get Active services
+            // Gestisci le regole Lynis
+         //   handleLynisRules(ip, port);
+
+
+            return true;
+
+        } catch (Exception e) {
+            log.error("Errore durante setup agente {}: ", ip, e);
+            return false;
         }
-        return true;
     }
 
     /**
-     * Check if the list of skippable elements is loaded on the agent
-     * @param ip  the addrs of the agent
-     * @return true is the list is already marked as loaded , false otherwise
+     * Processa lo status del server dall'agente
+     */
+    private void processServerStatus(JsonNode statusJson, String ip, int port) {
+        if (statusJson.get("message").isArray()) {
+            JsonNode listMsg = statusJson.get("message");
+            if (!listMsg.isEmpty()) {
+                List<String> messages = new ArrayList<>();
+                for (JsonNode data : listMsg) {
+                    messages.add(data.asText());
+                }
+
+                String serverIp = messages.get(0).replaceAll("\\n", "").trim();
+                log.info("Status server ricevuto per {}: {}", ip, serverIp);
+
+                // Salva il server se non esiste
+                if (serverRepo.findByIp(serverIp).isEmpty()) {
+                    Server newServer = new Server(serverIp, true, "Agent-" + serverIp, "Auto-registered agent", port);
+                    serverRepo.save(newServer);
+                    log.info("Nuovo server salvato: {}", serverIp);
+                }
+            }
+        }
+    }
+
+    /**
+     * Gestisce le regole Lynis per l'agente
+     */
+    private void handleLynisRules(String ip, int port) {
+        boolean isListLoaded = checkLoadingList(ip);
+        if (!isListLoaded) {
+            List<String> toLoadIds = getLoadingList(ip);
+            boolean rulesSent = client.addLynisRules(ip, port, toLoadIds);
+            if (rulesSent) {
+                Optional<Lynis> config = lynisRepo.findByIp(ip);
+                if (config.isPresent()) {
+                    config.get().setLoaded(true);
+                    lynisRepo.save(config.get());
+                    log.info("Regole Lynis caricate per agente {}", ip);
+                }
+            }
+        } else {
+            log.info("Regole Lynis già caricate per agente {}", ip);
+        }
+    }
+
+    /**
+     * Avvia il ping periodico per un agente specifico
+     */
+    private void startPeriodicPing(String ip, int port) {
+        log.info("Avvio ping periodico per agente {}", ip);
+
+        ScheduledFuture<?> pingTask = executorService.scheduleWithFixedDelay(() -> {
+            try {
+                boolean pingResult = client.pingAgent(ip, port);
+
+                if (pingResult) {
+                    log.debug("Ping periodico riuscito per agente {}", ip);
+
+                    // Trova il server e aggiungilo come attivo
+                    Optional<Server> serverOpt = serverRepo.findByIp(ip);
+                    if (serverOpt.isPresent()) {
+                        serverController.addActiveNode(serverOpt.get());
+                    }
+
+                    // Verifica e ricarica regole Lynis se necessario
+                    handleLynisRules(ip, port);
+
+                } else {
+                    log.warn("Ping periodico fallito per agente {}", ip);
+                    handlePingFailure(ip, port);
+                }
+
+            } catch (Exception e) {
+                log.error("Errore durante ping periodico per agente {}: ", ip, e);
+                handlePingFailure(ip, port);
+            }
+        }, 5, 5, TimeUnit.MINUTES);
+
+        pingSchedulers.put(ip, pingTask);
+    }
+
+    /**
+     * Gestisce il fallimento del ping per un agente specifico
+     */
+    private void handlePingFailure(String ip, int port) {
+        log.warn("Gestione fallimento ping per agente {}", ip);
+
+        // Rimuovi il nodo dalla lista attivi
+        serverController.removeActiveNode(ip);
+
+        // Ferma il ping periodico
+        stopPeriodicPing(ip);
+
+        // Avvia processo di ri-inizializzazione
+        log.info("Riavvio processo di inizializzazione per agente {}", ip);
+        registerAgent(ip, port);
+    }
+
+    /**
+     * Ferma il ping periodico per un agente specifico
+     */
+    public void stopPeriodicPing(String ip) {
+        ScheduledFuture<?> pingTask = pingSchedulers.remove(ip);
+        if (pingTask != null && !pingTask.isCancelled()) {
+            pingTask.cancel(true);
+            log.info("Ping periodico fermato per agente {}", ip);
+        }
+    }
+
+    /**
+     * Rimuove completamente un agente
+     */
+    public void removeAgent(String ip) {
+        log.info("Rimozione agente {}", ip);
+        stopPeriodicPing(ip);
+        serverController.removeActiveNode(ip);
+    }
+
+    /**
+     * Verifica se la lista è già caricata
      */
     private boolean checkLoadingList(String ip) {
-        log.info("checkLoadingList : check loading list ");
+        log.debug("Verifica caricamento lista per agente {}", ip);
         Optional<Lynis> config = lynisRepo.findByIp(ip);
         if (config.isPresent()) {
-
             boolean isLoaded = config.get().getLoaded();
-            log.info("checkLoadingList : check loading list  = ",isLoaded);
+            log.debug("Lista caricata per agente {}: {}", ip, isLoaded);
             return isLoaded;
         }
-        return true;
+        return false;
     }
+
+    /**
+     * Ottiene la lista degli ID da caricare
+     */
     private List<String> getLoadingList(String ip) {
-        log.info("getLoadingList : get loading list ");
+        log.debug("Recupero lista caricamento per agente {}", ip);
         Optional<Lynis> config = lynisRepo.findByIp(ip);
         List<String> list = new ArrayList<>();
+
         if (config.isPresent()) {
             String[] testIds = config.get().getListIdSkippedTest().split(",");
-            List<String> testIdsList = new ArrayList<>();
             for (String testId : testIds) {
                 list.add(testId.trim());
             }
-            return list ;
         }
         return list;
     }
 
-    private void startPeriodicPing() {
-        log.info("Start ping to python agent every 5 seconds...");
-        pingScheduler.scheduleWithFixedDelay(()->{
-            try{
-                boolean pingResult = client.pingLocalAgent();
-
-                //log.debug("Ping periodico successful per server: {}", currentServerIp);
-                if (pingResult) {
-                    log.info("Ping periodico successful per server: {}", currentServerIp);
-                    // Aggiorna stato server come attivo se necessario
-
-                    serverController.addActiveNode(currentServerIp);
-
-                    //TODO: to check
-                    boolean isListLoaded = checkLoadingList(currentServerIp );
-                    if (!isListLoaded) {
-                        List<String> toLoadIds = getLoadingList(currentServerIp);
-                        boolean ris = client.addLynisRules(toLoadIds);
-                        if(ris){
-                            Lynis config = lynisRepo.findByIp(currentServerIp).get();
-                            config.setLoaded(true);
-                            lynisRepo.save(config);
-                        }
-                    }
-                } else {
-                    log.warn("Ping periodico failed per server: {}", currentServerIp);
-                    serverController.removeActiveNode(currentServerIp);
-                    handlePingFailure();
-                }
-            } catch (Exception e) {
-            log.error("Errore durante ping periodico: ", e);
-            handlePingFailure();
-        }
-
-        },5,5, TimeUnit.MINUTES);
+    /**
+     * Verifica se un agente è attivo
+     */
+    public boolean isAgentActive(String ip) {
+        return pingSchedulers.containsKey(ip);
     }
 
-    private void handlePingFailure() {
-        // Segna il server come inattivo
-        if (currentServerIp != null) {
-
-            serverController.removeActiveNode(currentServerIp);
-        }
-
-        // Riavvia il processo di inizializzazione
-        agentInitialized = false;
-        log.info("Riavvio processo di inizializzazione agent...");
-
-        new Thread(() -> {
-            initAgent();
-        }, "agent-reinitialization").start();
+    /**
+     * Ottiene la lista degli agenti attivi
+     */
+    public Set<String> getActiveAgents() {
+        return new HashSet<>(pingSchedulers.keySet());
     }
 
+    /**
+     * Shutdown del servizio
+     */
     @PreDestroy
     public void shutdown() {
         log.info("Shutdown LocalAgentRegistration...");
-        if (pingScheduler != null && !pingScheduler.isShutdown()) {
-            pingScheduler.shutdown();
+
+        // Ferma tutti i ping periodici
+        pingSchedulers.values().forEach(task -> task.cancel(true));
+        pingSchedulers.clear();
+
+        // Shutdown executor service
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
             try {
-                if (!pingScheduler.awaitTermination(30, TimeUnit.SECONDS)) {
-                    pingScheduler.shutdownNow();
+                if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
                 }
             } catch (InterruptedException e) {
-                pingScheduler.shutdownNow();
+                executorService.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }
     }
-
-    // Metodi di utilità per monitoraggio
-    public boolean isAgentActive() {
-        return agentInitialized;
-    }
-
-    public String getCurrentServerIp() {
-        return currentServerIp;
-    }
-
 }
