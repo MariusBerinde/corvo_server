@@ -2,9 +2,8 @@ package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import marius.server.data.AgentService;
-import marius.server.data.dto.AgentPingResponse;
-import marius.server.data.dto.AgentResponseDTO;
-import marius.server.data.dto.ServiceStatusResponseDTO;
+import marius.server.data.Rules;
+import marius.server.data.dto.*;
 import marius.server.repo.ServiceRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +25,7 @@ public class AgentClientPython {
     private RestTemplate restTemplate;
     private static final Logger log = LoggerFactory.getLogger(AgentClientPython.class);
 
-    public AgentClientPython(RestTemplate restTemplate, ServiceRepo serviceRepo) { this.restTemplate = restTemplate; }
+    public AgentClientPython(RestTemplate restTemplate ) { this.restTemplate = restTemplate; }
 
     /**
      * Method that make a http get request to the agent python
@@ -248,7 +247,7 @@ public class AgentClientPython {
             );
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ Report Lynis ottenuto con successo da {}:{}", host, port);
+                log.info("✅ Report Lynis ottenuto con successo :{}", host, port);
 
                 // Log opzionale del nome file se presente negli headers
                 String filename = response.getHeaders().getFirst("X-Filename");
@@ -362,4 +361,49 @@ public class AgentClientPython {
         return Collections.emptyList();
     }
 
+    /**
+     * get the rules and the status of the security rules on the system connected with ip and port
+     * @param host
+     * @param port
+     * @return a list of Rules for the ip
+     */
+    public List<Rules> getSystemRules(String host, int port) {
+        log.info("getSystemRules(host: {}, port: {})", host, port);
+        String url = String.format("http://%s:%d/get_rules", host, port);
+        try {
+            // Cambiato per usare una struttura dati che corrisponde alla risposta reale
+            SystemRulesResponseDTO response = restTemplate.getForObject(url, SystemRulesResponseDTO.class);
+
+            if (response != null && "success".equalsIgnoreCase(response.getStatus())) {
+                log.info("✅ Stato servizi ottenuto da {}:{}", host, port);
+                List<Rules> rulesList = new ArrayList<>();
+
+                // Processa l'array di regole dal campo "message"
+                if (response.getMessage() != null) {
+                    for (RuleDTO rule : response.getMessage()) {
+                        String finalHost = host;
+                        if ("127.0.0.1".equals(host)) {
+                            log.info("getSystemRules forzo l'ip a quello della wsl");
+                            finalHost = "172.22.59.12";
+                        }
+
+                        Rules localRule = new Rules(
+                                rule.getName(),           // name
+                                rule.getDescription(),    // descr
+                                rule.isStatus(),         // status
+                                finalHost               // ip
+                        );
+                        rulesList.add(localRule);
+                    }
+                }
+                return rulesList;
+            } else {
+                log.error("⚠️ Risposta non valida da getSystemRules su {}:{}: {}",
+                        host, port, response != null ? response.toString() : "nessuna risposta");
+            }
+        } catch (RestClientException e) {
+            log.error("❌ getSystemRules fallito su {}:{}: {}", host, port, e.getMessage());
+        }
+        return Collections.emptyList();
+    }
 }

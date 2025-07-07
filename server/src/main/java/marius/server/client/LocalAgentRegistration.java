@@ -5,8 +5,10 @@ import jakarta.annotation.PreDestroy;
 import marius.server.controller.ServerController;
 import marius.server.data.AgentService;
 import marius.server.data.Lynis;
+import marius.server.data.Rules;
 import marius.server.data.Server;
 import marius.server.repo.LynisRepo;
+import marius.server.repo.RulesRepo;
 import marius.server.repo.ServerRepo;
 import marius.server.repo.ServiceRepo;
 import org.slf4j.Logger;
@@ -27,6 +29,7 @@ public class LocalAgentRegistration {
     private final AgentClientPython client;
     private final ServerRepo serverRepo;
     public static ServiceRepo serviceRepo;
+    public static RulesRepo rulesRepo;
     private final ServerController serverController;
     private final LynisRepo lynisRepo;
     private final Map<String, ScheduledFuture<?>> pingSchedulers = new ConcurrentHashMap<>();
@@ -35,12 +38,13 @@ public class LocalAgentRegistration {
     private final Long TIME_TO_WAIT = MINUTE_IN_MILLIS / 2;
 
     public LocalAgentRegistration(AgentClientPython client, ServerRepo serverRepo,
-                                  @Lazy ServerController serverController, LynisRepo lynisRepo,ServiceRepo serviceRepo) {
+                                  @Lazy ServerController serverController, LynisRepo lynisRepo,ServiceRepo serviceRepo,RulesRepo rulesRepo) {
         this.client = client;
         this.serverRepo = serverRepo;
         this.serverController = serverController;
         this.lynisRepo = lynisRepo;
         this.serviceRepo = serviceRepo;
+        this.rulesRepo = rulesRepo;
         this.executorService = Executors.newScheduledThreadPool(10, r -> {
             Thread t = new Thread(r, "AgentManager-" + System.currentTimeMillis());
             t.setDaemon(true);
@@ -130,7 +134,7 @@ public class LocalAgentRegistration {
     }
 
     /**
-     * Method that sets a java user for the agent identified with IP and Port
+     * Method that sets a java user for the agent identified with IP and Port and gets the status of active rules
      * @param ip
      * @param port
      * @return
@@ -157,8 +161,21 @@ public class LocalAgentRegistration {
                 this.serviceRepo.saveAll(services);
             }
 
+            List<Rules> localRules = client.getSystemRules(ip, port);
+            if (localRules != null && !localRules.isEmpty()) {
+                Optional<List<Rules>> oldRules = rulesRepo.findByIp(ip);
+                if (!oldRules.isPresent()) {
+                    this.rulesRepo.saveAll(localRules);
+                }else {
+                    log.info("Setup agent try to update the new rules by deletign the old version and save the new ");
+                    manageUpdateRules(ip, localRules);
+                }
+            }
+
+
+
             // Gestisci le regole Lynis
-         //   handleLynisRules(ip, port);
+           // handleLynisRules(ip, port);
 
 
             return true;
@@ -167,6 +184,17 @@ public class LocalAgentRegistration {
             log.error("Errore durante setup agente {}: ", ip, e);
             return false;
         }
+    }
+
+    /**
+     *  Updates the server rules by deleting old ones and re-proposing new ones from the agent.
+     * @param  ip the ip address of the repo where ip are the rules
+     * @param rulesList the updated version of ip
+     */
+    private void manageUpdateRules(String ip, List<Rules> rulesList) {
+        log.info("Manage update rules for {} agente {}", ip, rulesList.size());
+       this.rulesRepo.deleteByIp(ip);
+       this.rulesRepo.saveAll(rulesList);
     }
 
     /**
@@ -190,6 +218,7 @@ public class LocalAgentRegistration {
                     serverRepo.save(newServer);
                     log.info("Nuovo server salvato: {}", serverIp);
                 }
+
             }
         }
     }
@@ -234,6 +263,21 @@ public class LocalAgentRegistration {
                         serverController.addActiveNode(serverOpt.get());
                     }
 
+                    List<AgentService> services = client.getServiceStatus(ip,port);
+                    if (services != null && !services.isEmpty()) {
+                        this.serviceRepo.saveAll(services);
+                    }
+
+                    List<Rules> localRules = client.getSystemRules(ip, port);
+                    if (localRules != null && !localRules.isEmpty()) {
+                        Optional<List<Rules>> oldRules = rulesRepo.findByIp(ip);
+                        if (!oldRules.isPresent()) {
+                            this.rulesRepo.saveAll(localRules);
+                        }else {
+                            log.info("Setup agent try to update the new rules by deletign the old version and save the new ");
+                            manageUpdateRules(ip, localRules);
+                        }
+                    }
                     // Verifica e ricarica regole Lynis se necessario
                     handleLynisRules(ip, port);
 

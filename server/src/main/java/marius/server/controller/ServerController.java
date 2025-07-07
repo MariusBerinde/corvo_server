@@ -657,11 +657,11 @@ public class ServerController {
 
         if(requestBody.get("rule").hasNonNull("service")){
             Integer service = requestBody.get("rule").get("service").asInt();
-            Rules local = new Rules(descr,status,ip,service);
+            Rules local = new Rules("R",descr,status,ip,service);
             rulesRepo.save(local);
             return ResponseEntity.ok(local);
         }
-        Rules local = new Rules(descr,status,ip);
+        Rules local = new Rules("R",descr,status,ip);
         rulesRepo.save(local);
         return ResponseEntity.ok(local);
     }

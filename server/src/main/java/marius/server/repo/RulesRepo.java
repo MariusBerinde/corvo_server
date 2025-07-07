@@ -8,4 +8,6 @@ import java.util.Optional;
 
 public interface RulesRepo extends JpaRepository<Rules,Integer> {
     public Optional<List<Rules>> findByIp(String ip);
+
+    public Integer deleteByIp(String ip);
 }

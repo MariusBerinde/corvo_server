@@ -1,8 +1,3 @@
-# corvo_server
-repo contenente il server java che usa un database postgress
-## Note di configurazione 
-- all'avvio si connette al database postgres e crea le tabelle 
-``` sql 
 CREATE TABLE IF NOT EXISTS ApprovedUsers (
   id SERIAL PRIMARY KEY,
   email VARCHAR(255) NOT NULL UNIQUE,
@@ -37,7 +32,6 @@ CREATE TABLE IF NOT EXISTS service (
 
 CREATE TABLE IF NOT EXISTS rules (
   id SERIAL PRIMARY KEY,
-  name varchar(127),
   descr TEXT NOT NULL,
   status BOOLEAN NOT NULL DEFAULT false,
   ip VARCHAR(20) NOT NULL,
@@ -66,11 +60,3 @@ CREATE TABLE IF NOT EXISTS log (
   CONSTRAINT fk_service FOREIGN KEY(service) REFERENCES public.service(id),
   CONSTRAINT fk_email FOREIGN KEY(user_email) REFERENCES public.users(email)
 );
-
-```
-
-- all'avvio crea un utente di tipo SUPERVISOR con i seguenti dati:
-    -  username : Admin
-    - email = admin@gmail.com
-    -  password = Admin@123_!
-

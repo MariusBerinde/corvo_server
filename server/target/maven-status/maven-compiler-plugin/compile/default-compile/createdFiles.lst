@@ -1,3 +1,4 @@
+marius\server\client\DefalutInit.class
 marius\server\repo\ApprovedUsersRepo.class
 marius\server\data\RoleEnum.class
 marius\server\repo\ServiceRepo.class
@@ -13,14 +14,15 @@ marius\server\controller\AuthController.class
 marius\server\client\AgentClientPython.class
 marius\server\Tools.class
 marius\server\repo\RulesRepo.class
-marius\server\data\Service.class
 marius\server\client\AgentConfig.class
 marius\server\repo\LogRepo.class
 marius\server\client\LocalAgentRegistration.class
 marius\server\repo\ServerRepo.class
 marius\server\data\Log.class
 marius\server\controller\ServerController.class
+marius\server\data\dto\ServiceStatusResponseDTO.class
 marius\server\data\dto\AgentResponseDTO.class
 marius\server\repo\LynisRepo.class
 marius\server\ServerCorvoApplication.class
 marius\server\CorsoConfig.class
+marius\server\data\AgentService.class
