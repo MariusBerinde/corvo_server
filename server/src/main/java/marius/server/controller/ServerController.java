@@ -23,9 +23,8 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-//TODO: if requuset fail make ip inaviable
-/**
- * Class used for manage the routes of Server and Services
+/** This class contains all the REST routes for interract with the agents python
+ * @Autorthor Marius Berinde
  */
 @RestController
 @CrossOrigin
@@ -57,15 +56,19 @@ public class ServerController {
     }
 
     /**
-     *  add the server to the list of active nodes
-     * @param server
-     * @return
+     *  Add  a server to the list of active nodes
+     * @param server the new active node
+     * @return if the server is added to the hashmap called server
      */
     public boolean addActiveNode(Server server) { return this.servers.putIfAbsent(server.getIp(), server) == null; }
 
+    /**
+     * remove the server wit IP from the hashmap of active nodes
+     * @param ip the IP address of the node that will be removed
+     * @return true i the node is removed from servers , false otherwise
+     */
     public boolean removeActiveNode(String ip){ return this.servers.remove(ip) != null; }
 
-    public boolean containsActiveNode(String ip){ return this.servers.containsKey(ip); }
     /**
      * Return the information about the server indicate by id
      * @param requestBody JSON object containing user credentials:
@@ -111,6 +114,12 @@ public class ServerController {
         return ResponseEntity.ok(actualServer.get());
     }
 
+    /**
+     * This route will return a  List<Server> of all servers added in the database
+     * @param email the email of the user who try to get the servers
+     * @param request
+     * @return
+     */
     @GetMapping("/getAllServers")
     public ResponseEntity getAllServers(@RequestHeader("email") String email, HttpServletRequest request){
         if(email == null || email.isEmpty()){
@@ -791,13 +800,15 @@ public class ServerController {
             if(listIdSkippedTest.isArray()){
                 List<String> list = new ArrayList<>();
                 for (JsonNode listId : listIdSkippedTest){
-                    list.add(listId.asText());
+                    list.add(listId.asText().toString());
                 }
 
                 if (activeServer){
                     log.info("addLynisConfig add skipped listIdSkippedTest to local agent");
-                    this.client.setActiveUser(auditor);
-                    this.client.addLynisRules(ip,5000,list); //TODO:
+                    int port = this.servers.get(ip).getPort();
+                    log.info("listIdSkippedTest: {}=",list);
+                    this.client.setActiveUser(ip,port,auditor);
+                    this.client.addLynisRules(ip,port,list);
                 }
                 if(!list.isEmpty()){
                     listIdSkippedTestString = String.join(",", list);
@@ -864,8 +875,11 @@ public class ServerController {
         }
         log.info(" getLynisReportByIp pamams = IP : ",ip ,"username:",username);
 
-        // Prima di tutto, imposta l'utente attivo sull'agent Python
-        boolean userSet = client.setActiveUser(ip, 5000, username);
+        if(!servers.containsKey(ip)){
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("server not found");
+        }
+
+        boolean userSet = client.setActiveUser(ip, this.servers.get(ip).getPort(), username);
         if (!userSet) {
             log.error("❌ Impossibile impostare l'utente {} sull'agent {}:5000", username, ip);
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
@@ -874,7 +888,7 @@ public class ServerController {
 
         // Ottieni il report Lynis
         try {
-            String reportContent = client.getLynisReportText(ip, 5000);
+            String reportContent = client.getLynisReportText(ip, this.servers.get(ip).getPort());
 
             log.info(" getLynisReportByIp pamams = IP : ",ip ,"username:",username);
 
@@ -919,7 +933,10 @@ public class ServerController {
         log.info("startLynisScan: ho preso i parametri e tento di inoltro la scan all'agent python");
         try {
             // Imposta l'utente attivo sull'agent target
-            boolean userSet = this.client.setActiveUser(ip, 5000, username);
+            if(!servers.containsKey(ip)){
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body("server not found");
+            }
+            boolean userSet = this.client.setActiveUser(ip, this.servers.get(ip).getPort(), username);
             if (!userSet) {
                 log.error("IP={} failed in startLynisScan: unable to set active user {} on agent {}",
                         request.getRemoteAddr(), username, ip);
@@ -928,7 +945,7 @@ public class ServerController {
             }
 
             // Avvia la scansione Lynis
-            boolean scanStarted = this.client.startLynisScan(ip, 5000);
+            boolean scanStarted = this.client.startLynisScan(ip, this.servers.get(ip).getPort());
 
             if (scanStarted) {
                 log.info("IP={} successfully started Lynis scan for user {} on agent {}",
@@ -1098,6 +1115,7 @@ public class ServerController {
             List<AgentService> services = serviceRepo.findByIp(actualIp);
             return ResponseEntity.ok(services);
         }
+
 
     }
 

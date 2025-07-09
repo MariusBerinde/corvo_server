@@ -569,24 +569,16 @@ public class AuthController {
    }
 
 
+    /**
+     * Route used for check if the user server ip up
+     * @return true
+     */
     @GetMapping("/ping1")
-    public ResponseEntity<String> ping1(@RequestHeader("username") String username) {
+    public ResponseEntity<Boolean> ping1() {
 
-        log.info("header=" + username);
-        if (username == null || username.isEmpty()) {
-            return ResponseEntity.badRequest().body("Missing username header");
-        }
-        return ResponseEntity.ok("Ping OK for " + username);
+        log.info("JAVA UP" );
+        return ResponseEntity.ok(true);
     }
 
-    @PostMapping("/ping2")
-    public ResponseEntity ping2(@RequestBody JsonNode requestBody) {
-        if (!requestBody.hasNonNull("username")) {
-            return ResponseEntity.badRequest().body("username field missing ");
-        }
-        String username = requestBody.get("username").asText();
-        log.info("username preso=" + username);
-        return ResponseEntity.ok("Ping2 OK for " + requestBody.get("username").asText());
-    }
 
 }

@@ -24,7 +24,6 @@ public class Tools {
      * @param email the email address to validate (can be null)
      * @return true if the email has a valid format, false otherwise (including null input)
      *
-     * @throws PatternSyntaxException if the regex pattern is malformed (should not happen with current implementation)
      *
      * @example
      * <pre>

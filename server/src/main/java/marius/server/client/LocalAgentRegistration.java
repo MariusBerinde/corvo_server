@@ -18,18 +18,20 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Component
-/**
- * Class used for manage the local agent
+/*
+  Class used for manage the comunication with the user agent
  */
 public class LocalAgentRegistration {
 
     private static final Logger log = LoggerFactory.getLogger(LocalAgentRegistration.class);
     private final AgentClientPython client;
     private final ServerRepo serverRepo;
-    public static ServiceRepo serviceRepo;
-    public static RulesRepo rulesRepo;
+    private static ServiceRepo serviceRepo;
+    private static RulesRepo rulesRepo;
     private final ServerController serverController;
     private final LynisRepo lynisRepo;
     private final Map<String, ScheduledFuture<?>> pingSchedulers = new ConcurrentHashMap<>();
@@ -80,7 +82,9 @@ public class LocalAgentRegistration {
     }
 
     /**
-     * Inizializza la comunicazione con un agente specifico
+     * Init the comunication between java server and the agent python
+     * @param ip the IP v4 address of the agent
+     * @param port the port
      */
     private void initAgent(String ip, int port) {
         log.info("Inizializzazione agente {}:{}", ip, port);
@@ -130,14 +134,40 @@ public class LocalAgentRegistration {
         if (!connectionEstablished) {
             log.error("Impossibile stabilire connessione con agente {} dopo {} tentativi", ip, maxRetries);
             serverController.removeActiveNode(ip);
+            Optional<Server> tmp_server = serverRepo.findByIp(ip);
+            if (tmp_server.isPresent()) {
+                tmp_server.get().setState(false);
+                // set the status of the server down on database
+                serverRepo.save(tmp_server.get());
+                setsDownServices(ip);
+                setsDownRule(ip);
+
+            }
         }
     }
 
+    private void setsDownRule(String ip) {
+        List<Rules> dbRules = rulesRepo.findByIp(ip).get();
+        for (Rules dbRule : dbRules) {
+            dbRule.setStatus(false);
+        }
+        rulesRepo.saveAll(dbRules);
+    }
+
+    private void setsDownServices(String ip) {
+        List<AgentService> servicesIp = serviceRepo.findAllByIp(ip);
+       for (AgentService service : servicesIp) {
+           service.setState(false);
+       }
+       serviceRepo.saveAll(servicesIp);
+    }
+
+
     /**
      * Method that sets a java user for the agent identified with IP and Port and gets the status of active rules
-     * @param ip
-     * @param port
-     * @return
+     * @param ip the ip of the agent
+     * @param port the port user by the agent
+     * @return true if the java server make a handshake with the python agent
      */
     private boolean setupAgent(String ip, int port) {
         try {
@@ -158,7 +188,17 @@ public class LocalAgentRegistration {
 
             List<AgentService> services = client.getServiceStatus(ip,port);
             if (services != null && !services.isEmpty()) {
-                this.serviceRepo.saveAll(services);
+                List<AgentService> dbServices = serviceRepo.findAllByIp(ip);
+                if (dbServices != null && !dbServices.isEmpty()) {
+                    //updateServices(ip,dbServices,services);
+                    updateServicesAlt(ip,services);
+                }
+                else {
+                    this.serviceRepo.saveAll(services);
+                }
+            }
+            else{
+                return false;
             }
 
             List<Rules> localRules = client.getSystemRules(ip, port);
@@ -168,14 +208,15 @@ public class LocalAgentRegistration {
                     this.rulesRepo.saveAll(localRules);
                 }else {
                     log.info("Setup agent try to update the new rules by deletign the old version and save the new ");
-                    manageUpdateRules(ip, localRules);
+                    manageUpdateRules(ip,oldRules.get(), localRules);
                 }
             }
-
-
+            else{
+                return false;
+            }
 
             // Gestisci le regole Lynis
-           // handleLynisRules(ip, port);
+            handleLynisRules(ip, port);
 
 
             return true;
@@ -186,15 +227,69 @@ public class LocalAgentRegistration {
         }
     }
 
+   private void updateServices(String ip,List<AgentService> dbService,List<AgentService> incomingServices) {
+       log.info("Manage update services for {} agente {}", ip,incomingServices.size());
+
+       Map<String, AgentService> oldServicesMap = dbService.stream()
+               .collect(Collectors.toMap(AgentService::getName, Function.identity()));
+
+       List<AgentService> newRules = new ArrayList<>();
+
+       for (AgentService updatedRule : incomingServices) {
+           AgentService oldService = oldServicesMap.get(updatedRule.getName());
+           if (oldService != null ) {
+               oldService.setState(updatedRule.isState());
+               oldService.setAutomaticStart(updatedRule.isAutomaticStart());
+           } else {
+               newRules.add(updatedRule); // 👈 è una regola nuova, va aggiunta
+           }
+       }
+
+       this.serviceRepo.saveAll(dbService);
+       this.serviceRepo.saveAll(newRules);
+
+   }
+
+   private void updateServicesAlt(String ip,List<AgentService> incomingServices) {
+        log.info("MANAGE UPDATE ALT :services by deleting the old data in the database for {} agente {}", ip,incomingServices.size());
+        boolean state = client.deleteOldServices(ip);
+        if (!state) {
+            log.info("MANAGE UPDATE ALT: old data not deleted");
+        }
+        else {
+            log.info("MANAGE UPDATE ALT: old data deleted");
+        }
+        this.serviceRepo.saveAll(incomingServices);
+
+
+   }
+
+
     /**
      *  Updates the server rules by deleting old ones and re-proposing new ones from the agent.
      * @param  ip the ip address of the repo where ip are the rules
      * @param rulesList the updated version of ip
      */
-    private void manageUpdateRules(String ip, List<Rules> rulesList) {
+    private void manageUpdateRules(String ip, List<Rules> oldRules, List<Rules> rulesList) {
         log.info("Manage update rules for {} agente {}", ip, rulesList.size());
-       this.rulesRepo.deleteByIp(ip);
-       this.rulesRepo.saveAll(rulesList);
+
+        Map<String, Rules> oldRulesMap = oldRules.stream()
+                .collect(Collectors.toMap(Rules::getName, Function.identity()));
+
+        List<Rules> newRules = new ArrayList<>();
+
+        for (Rules updatedRule : rulesList) {
+            Rules oldRule = oldRulesMap.get(updatedRule.getName());
+            if (oldRule != null) {
+                oldRule.setDescr(updatedRule.getDescr());
+                oldRule.setStatus(updatedRule.isStatus());
+            } else {
+                newRules.add(updatedRule); // 👈 è una regola nuova, va aggiunta
+            }
+        }
+
+        this.rulesRepo.saveAll(oldRules);     // aggiorna le esistenti
+        this.rulesRepo.saveAll(newRules);     // inserisce le nuove
     }
 
     /**
@@ -224,7 +319,9 @@ public class LocalAgentRegistration {
     }
 
     /**
-     * Gestisce le regole Lynis per l'agente
+     * Loads a pending lisk of skippable test form database to agent
+     * @param ip the IPV4 agent address
+     * @param port the port used by the agent for comunicate with the server
      */
     private void handleLynisRules(String ip, int port) {
         boolean isListLoaded = checkLoadingList(ip);
@@ -236,6 +333,7 @@ public class LocalAgentRegistration {
                 if (config.isPresent()) {
                     config.get().setLoaded(true);
                     lynisRepo.save(config.get());
+                    client.addLynisRules(ip, port, toLoadIds);
                     log.info("Regole Lynis caricate per agente {}", ip);
                 }
             }
@@ -255,34 +353,11 @@ public class LocalAgentRegistration {
                 boolean pingResult = client.pingAgent(ip, port);
 
                 if (pingResult) {
-                    log.debug("Ping periodico riuscito per agente {}", ip);
-
-                    // Trova il server e aggiungilo come attivo
-                    Optional<Server> serverOpt = serverRepo.findByIp(ip);
-                    if (serverOpt.isPresent()) {
-                        serverController.addActiveNode(serverOpt.get());
-                    }
-
-                    List<AgentService> services = client.getServiceStatus(ip,port);
-                    if (services != null && !services.isEmpty()) {
-                        this.serviceRepo.saveAll(services);
-                    }
-
-                    List<Rules> localRules = client.getSystemRules(ip, port);
-                    if (localRules != null && !localRules.isEmpty()) {
-                        Optional<List<Rules>> oldRules = rulesRepo.findByIp(ip);
-                        if (!oldRules.isPresent()) {
-                            this.rulesRepo.saveAll(localRules);
-                        }else {
-                            log.info("Setup agent try to update the new rules by deletign the old version and save the new ");
-                            manageUpdateRules(ip, localRules);
-                        }
-                    }
-                    // Verifica e ricarica regole Lynis se necessario
-                    handleLynisRules(ip, port);
+                    log.info("Ping periodico riuscito per agente {}", ip);
+                    setupAgent(ip, port);
 
                 } else {
-                    log.warn("Ping periodico fallito per agente {}", ip);
+                    log.error("Ping periodico fallito per agente {}", ip);
                     handlePingFailure(ip, port);
                 }
 
@@ -333,21 +408,25 @@ public class LocalAgentRegistration {
     }
 
     /**
-     * Verifica se la lista è già caricata
+     * Control if on the server is present a skippable list to load on the agente
+     * @param ip the IPV4 address of the agent
+     * @return true if a pending list is on server , false otherwise
      */
     private boolean checkLoadingList(String ip) {
-        log.debug("Verifica caricamento lista per agente {}", ip);
+        log.info("Verifica caricamento lista per agente {}", ip);
         Optional<Lynis> config = lynisRepo.findByIp(ip);
         if (config.isPresent()) {
             boolean isLoaded = config.get().getLoaded();
-            log.debug("Lista caricata per agente {}: {}", ip, isLoaded);
+            log.info("Lista caricata per agente {}: {}", ip, isLoaded);
             return isLoaded;
         }
         return false;
     }
 
     /**
-     * Ottiene la lista degli ID da caricare
+     * Loads the pending list of skippable test from database to the server
+     * @param ip the IP v4 address of the agent
+     * @return a List<String> with the acronysm of the skippable rules from the database
      */
     private List<String> getLoadingList(String ip) {
         log.debug("Recupero lista caricamento per agente {}", ip);
@@ -363,19 +442,6 @@ public class LocalAgentRegistration {
         return list;
     }
 
-    /**
-     * Verifica se un agente è attivo
-     */
-    public boolean isAgentActive(String ip) {
-        return pingSchedulers.containsKey(ip);
-    }
-
-    /**
-     * Ottiene la lista degli agenti attivi
-     */
-    public Set<String> getActiveAgents() {
-        return new HashSet<>(pingSchedulers.keySet());
-    }
 
     /**
      * Shutdown del servizio

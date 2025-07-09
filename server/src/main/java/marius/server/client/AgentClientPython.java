@@ -1,6 +1,8 @@
 package marius.server.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.transaction.Transactional;
 import marius.server.data.AgentService;
 import marius.server.data.Rules;
 import marius.server.data.dto.*;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
@@ -24,8 +27,12 @@ public class AgentClientPython {
 
     private RestTemplate restTemplate;
     private static final Logger log = LoggerFactory.getLogger(AgentClientPython.class);
+    private static ServiceRepo serviceRepo;
 
-    public AgentClientPython(RestTemplate restTemplate ) { this.restTemplate = restTemplate; }
+    public AgentClientPython(RestTemplate restTemplate , ServiceRepo serviceRepo) {
+        this.restTemplate = restTemplate;
+        this.serviceRepo = serviceRepo;
+    }
 
     /**
      * Method that make a http get request to the agent python
@@ -185,34 +192,85 @@ public class AgentClientPython {
      */
     public boolean addLynisRules(String host, int port, List<String> rules){
         log.info("addLynisRules(host: {}, port: {})", host, port);
+        log.info("addLynisRules(host: {}, port: {}) rules = {}", host, port, rules);
+
         if(host == null || host.isEmpty()){
             host = defaultHost;
         }
+
         String url = String.format("http://%s:%d/add_rules", host, port);
+        log.info("URL finale: {}", url);
 
         // Crea il JSON body
         Map<String, List<String>> requestBody = new HashMap<>();
         requestBody.put("rules", rules);
 
-        // Imposta gli headers
+        // Debug del JSON
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonString = "";
+        try {
+            jsonString = mapper.writeValueAsString(requestBody);
+            log.info("JSON che verrà inviato: {}", jsonString);
+            log.info("Lunghezza JSON: {}", jsonString.length());
+        } catch (Exception e) {
+            log.error("Errore serializzazione JSON: {}", e.getMessage());
+            return false;
+        }
+
+        // Imposta gli headers per simulare curl
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("User-Agent", "curl/7.68.0");
+        headers.set("Accept", "*/*");
+        headers.set("Content-Length", String.valueOf(jsonString.length()));
+
+        // Log degli headers
+        log.info("Headers che verranno inviati:");
+        headers.forEach((key, value) -> log.info("  {}: {}", key, value));
 
         // Crea l'HttpEntity
         HttpEntity<Map<String, List<String>>> entity = new HttpEntity<>(requestBody, headers);
 
         try {
-            AgentResponseDTO response = restTemplate.postForObject(url, entity, AgentResponseDTO.class);
-            boolean success = response != null && "success".equalsIgnoreCase(response.getStatus());
+            // Usa exchange per avere più controllo
+            ResponseEntity<String> responseEntity = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    String.class
+            );
 
-            if (success) {
-                log.info("✅ Regole Lynis aggiunte con successo su {}:{}: {}", host, port, rules);
-            } else {
-                log.error("❌ Aggiunta regole Lynis fallita su {}:{}: {}", host, port, response != null ? response.getMessage() : "nessuna risposta");
+            log.info("Status code: {}", responseEntity.getStatusCode());
+            log.info("Response headers: {}", responseEntity.getHeaders());
+            log.info("Response body: {}", responseEntity.getBody());
+
+            // Prova a parsare la risposta
+            try {
+                AgentResponseDTO response = mapper.readValue(responseEntity.getBody(), AgentResponseDTO.class);
+                boolean success = response != null && "success".equalsIgnoreCase(response.getStatus());
+
+                if (success) {
+                    log.info("✅ Regole Lynis aggiunte con successo su {}:{}: {}", host, port, rules);
+                } else {
+                    log.error("❌ Aggiunta regole Lynis fallita su {}:{}: {}", host, port, response.getMessage());
+                }
+                return success;
+            } catch (Exception e) {
+                log.error("Errore parsing risposta: {}", e.getMessage());
+                return false;
             }
-            return success;
+
         } catch (RestClientException e){
             log.error("❌ addLynisRules fallito su {}:{}: {}", host, port, e.getMessage());
+
+            // Se è un HttpClientErrorException, ottieni più dettagli
+            if (e instanceof HttpClientErrorException) {
+                HttpClientErrorException httpEx = (HttpClientErrorException) e;
+                log.error("Status code: {}", httpEx.getStatusCode());
+                log.error("Response body: {}", httpEx.getResponseBodyAsString());
+                log.error("Response headers: {}", httpEx.getResponseHeaders());
+            }
+
             return false;
         }
     }
@@ -325,6 +383,8 @@ public class AgentClientPython {
      * @param port the port of the agent
      * @return a list of Services entities representing each service's status
      */
+
+    /*
     public List<AgentService> getServiceStatus(String host, int port) {
         log.info("getServiceStatus(host: {}, port: {})", host, port);
         String url = String.format("http://%s:%d/get_service_status", host, port);
@@ -360,11 +420,47 @@ public class AgentClientPython {
 
         return Collections.emptyList();
     }
+    */
+    public List<AgentService> getServiceStatus(String host, int port) {
+        log.info("getServiceStatus(host: {}, port: {})", host, port);
+        String url = String.format("http://%s:%d/get_service_status", host, port);
+        try {
+            ServiceStatusResponseDTO response = restTemplate.getForObject(url, ServiceStatusResponseDTO.class);
+            if (response != null && "success".equalsIgnoreCase(response.getStatus())) {
+                log.info("✅ Stato servizi ottenuto da {}:{}", host, port);
+                List<AgentService> servicesList = new ArrayList<>();
+
+                // Gestione del cambio IP per WSL
+                String actualHost = host;
+                if ("127.0.0.1".equals(host)) {
+                    log.info("getServiceStatus forzo l'ip a quello della wsl");
+                    actualHost = "172.22.59.12";
+                }
+
+                for (ServiceStatusResponseDTO.ServiceInfo serviceInfo : response.getStatusServices()) {
+                    String serviceName = serviceInfo.getName().trim();
+                    boolean state = serviceInfo.isStatus();
+                    boolean automaticStart = serviceInfo.isAutomaticStart();
+
+                    log.info("getServiceStatus servizo creato con ip {} nome {} automaticStart{} stato {}", actualHost,serviceName, automaticStart, state);
+
+                    AgentService service = new AgentService(host, serviceName, "todo", port, automaticStart, state);
+                    servicesList.add(service);
+                }
+                return servicesList;
+            } else {
+                log.error("⚠️ Risposta non valida da getServiceStatus su {}:{}: {}", host, port, response != null ? response.getMessage() : "nessuna risposta");
+            }
+        } catch (RestClientException e) {
+            log.error("❌ getServiceStatus fallito su {}:{}: {}", host, port, e.getMessage());
+        }
+        return Collections.emptyList();
+    }
 
     /**
      * get the rules and the status of the security rules on the system connected with ip and port
-     * @param host
-     * @param port
+     * @param host the ip v4 address of the agent
+     * @param port the port used by the server for comunicate with the server
      * @return a list of Rules for the ip
      */
     public List<Rules> getSystemRules(String host, int port) {
@@ -403,7 +499,14 @@ public class AgentClientPython {
             }
         } catch (RestClientException e) {
             log.error("❌ getSystemRules fallito su {}:{}: {}", host, port, e.getMessage());
+
         }
         return Collections.emptyList();
+    }
+
+
+    @Transactional
+    public boolean deleteOldServices(String ip) {
+        return serviceRepo.deleteByIp(ip)>0;
     }
 }

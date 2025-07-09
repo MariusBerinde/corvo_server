@@ -12,6 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Class used for test the routes of the AgentClientPython
+ * @Author Marius Dumitru Berinde
+ */
 @RestController
 public class AgentController {
     private static final Logger log = LoggerFactory.getLogger(AgentController .class);

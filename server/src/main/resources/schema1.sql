@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS log (
   ip VARCHAR(20),
   service INTEGER,
   descr TEXT NOT NULL,
-  CONSTRAINT fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip),
-  CONSTRAINT fk_service FOREIGN KEY(service) REFERENCES public.service(id),
-  CONSTRAINT fk_email FOREIGN KEY(user_email) REFERENCES public.users(email)
+  CONSTRAINT fk_ip FOREIGN KEY(ip) REFERENCES public.server(ip) on delete set null,
+  CONSTRAINT fk_service FOREIGN KEY(service) REFERENCES public.service(id) on delete  set null ,
+  CONSTRAINT fk_email FOREIGN KEY(user_email) REFERENCES public.users(email) on delete set null
 );
