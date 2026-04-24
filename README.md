@@ -2,11 +2,6 @@
 
 > Componente server centrale del sistema [Corvo](https://github.com/), sviluppato come progetto di tesi magistrale in collaborazione con **Sinelec S.p.A.**
 
->**Per testing**: all'avvio crea un utente di tipo SUPERVISOR con i seguenti dati:
-    -  username : Admin
-    - email = admin@gmail.com
-    -  password = Admin@123_!
-
 ---
 
 ## 📋 Descrizione
@@ -15,7 +10,7 @@
 
 Gestisce inoltre l'autenticazione degli operatori, il controllo degli accessi basato su ruoli (RBAC) e la comunicazione asincrona e fault-tolerant con i nodi remoti.
 
-> **Nota:** Questo repository contiene esclusivamente il codice del backend. Gli altri componenti si trovano nei repository [`corvo_agent`](#) e [`corvo_front`](#).
+> **Nota:** Questo repository contiene anche il file `docker-compose.yml` per l'avvio dell'intero sistema (frontend + backend + database). Gli altri componenti si trovano nei repository [`corvo_agent`](#) e [`corvo_front`](#).
 
 ---
 
@@ -49,6 +44,8 @@ src/
 │   └── repo/             # Repository Spring Data JPA (accesso PostgreSQL)
 └── resources/
     └── application.properties           # Configurazione Spring Boot
+docker-compose.yml                       # Orchestrazione dell'intero sistema
+.env.example                             # Template variabili d'ambiente
 ```
 
 ---
@@ -200,18 +197,85 @@ spring.datasource.username=<DB_USER>
 spring.datasource.password=<DB_PASSWORD>
 ```
 
-I parametri di connessione al database possono essere passati tramite variabili d'ambiente per evitare di committare credenziali nel repository.
+---
+
+## 🐳 Avvio con Docker Compose
+
+Questo repository contiene il `docker-compose.yml` per avviare l'intero sistema (frontend + backend + database).
+
+### Prerequisiti
+
+- Docker e Docker Compose installati
+
+### 1. Configura le variabili d'ambiente
+
+```bash
+cp .env.example .env
+# Modifica .env con i parametri del tuo ambiente
+```
+
+Variabili principali:
+
+```env
+# Database
+POSTGRES_DB=corvo
+POSTGRES_USER=corvo_user
+POSTGRES_PASSWORD=<password>
+
+# pgAdmin
+PGADMIN_DEFAULT_EMAIL=admin@admin.com
+PGADMIN_DEFAULT_PASSWORD=<password>
+
+# Backend
+SERVER_PORT=8083
+```
+
+### 2. Avvia i container
+
+```bash
+docker compose up -d
+```
+
+I servizi saranno disponibili su:
+
+| Servizio | URL |
+|---|---|
+| Frontend | `http://localhost:4200` |
+| Backend API | `http://localhost:8083` |
+| pgAdmin | `http://localhost:8081` |
+
+### 3. Ferma i container
+
+```bash
+docker compose down
+```
+
+Per fermare e rimuovere anche i volumi (⚠️ cancella i dati del database):
+
+```bash
+docker compose down -v
+```
+
+### Architettura dei container
+
+| Servizio | Immagine base | Note |
+|---|---|---|
+| `postgres` | `postgres:15-alpine` | Dati persistiti su volume Docker |
+| `pgadmin` | `dpage/pgadmin4` | Avvio subordinato all'healthcheck di postgres |
+| `corvo-server` | `openjdk:24-jdk-slim` | Eseguito con utente non-root |
+| `corvo-front` | `node:18-alpine` → `nginx:alpine` | Multi-stage build |
+
+Tutti i container comunicano sulla rete interna `app_network` (driver `bridge`). Sono configurati `healthcheck` e politica di riavvio `on-failure` per tutti i servizi applicativi.
 
 ---
 
-## 🚀 Avvio locale
+## 🚀 Avvio locale (senza Docker)
 
 ### Prerequisiti
 
 - Java 17+
 - Maven 3.8+
 - PostgreSQL in esecuzione e raggiungibile
-- (Opzionale) almeno un'istanza di `corvo_agent` configurata e in esecuzione
 
 ### Avvio
 
@@ -221,13 +285,12 @@ git clone https://github.com/<tuo-utente>/corvo_back.git
 cd corvo_back
 
 # 2. Configura il database in application.properties
-# (oppure esporta le variabili d'ambiente corrispondenti)
 
 # 3. Compila e avvia
 mvn spring-boot:run
 ```
 
-Il backend si avvia sulla porta `8083` (modificabile tramite la variabile d'ambiente `SERVER_PORT`).
+Il backend si avvia sulla porta `8083` (modificabile tramite `SERVER_PORT`).
 
 ---
 
@@ -235,7 +298,7 @@ Il backend si avvia sulla porta `8083` (modificabile tramite la variabile d'ambi
 
 ### Protezione delle password — Argon2id
 
-Le password non vengono mai memorizzate in chiaro. Il sistema utilizza **Argon2id** (vincitore della Password Hashing Competition, standard OWASP) con i seguenti parametri:
+Le password non vengono mai memorizzate in chiaro. Il sistema utilizza **Argon2id** con i seguenti parametri:
 
 | Parametro | Valore |
 |---|---|
@@ -244,11 +307,7 @@ Le password non vengono mai memorizzate in chiaro. Il sistema utilizza **Argon2i
 | Parallelism (`p`) | 4 thread |
 | Salt | 16 byte casuali per utente |
 
-L'hashing avviene esclusivamente server-side per prevenire attacchi *Pass-the-Hash*.
-
 ### Controllo degli accessi — RBAC
-
-Il backend verifica il ruolo dell'utente interrogando il database ad ogni richiesta. La tabella seguente riassume i permessi per ruolo:
 
 | Operazione | Worker | Supervisor |
 |---|:---:|:---:|
@@ -262,9 +321,7 @@ Il backend verifica il ruolo dell'utente interrogando il database ad ogni richie
 | Visualizzazione propri log | ✓ | ✓ |
 | Visualizzazione log di altri utenti | ✗ | ✓ |
 
-### Note sul trasporto
-
-La comunicazione avviene in **HTTP non cifrato**, giustificato dal contesto di deployment in rete aziendale isolata (intranet). Il sistema **non deve essere esposto su reti pubbliche**. Per deployment in contesti meno fidati sarebbe necessario introdurre HTTPS/TLS.
+> La comunicazione avviene in **HTTP non cifrato**: il sistema è progettato per reti aziendali isolate. **Non esporre su reti pubbliche.**
 
 ---
 
@@ -277,15 +334,13 @@ Quando un agent si registra tramite `/addAgent`, il backend:
 3. In caso di successo, inserisce l'agent nel database e avvia un thread dedicato (`LocalAgentRegistration`)
 4. Il thread esegue un **polling ogni 5 minuti** raccogliendo: stato dei servizi, regole di auditing attive, configurazione Lynis
 
-In caso di disconnessione, il backend ritenta fino a **10 volte** con backoff statico. Al decimo fallimento, l'agent viene marcato come `INACTIVE` nel database. La riattivazione richiede una nuova connessione da parte dell'agent.
-
-Il pool di thread gestisce fino a **10 agent concorrenti**.
+In caso di disconnessione, il backend ritenta fino a **10 volte** con backoff statico. Al decimo fallimento, l'agent viene marcato come `INACTIVE`. Il pool di thread gestisce fino a **10 agent concorrenti**.
 
 ---
 
 ## 📄 Contesto del progetto
 
-`corvo_back` fa parte del sistema **Corvo**, sviluppato come progetto di tesi magistrale presso **Sinelec S.p.A.** Il sistema completo comprende anche l'agent Python (`corvo_agent`) e il frontend Angular (`corvo_front`).
+`corvo_back` fa parte del sistema **Corvo**, sviluppato come progetto di tesi magistrale presso **Sinelec S.p.A.**
 
 ---
 
