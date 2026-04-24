@@ -1,7 +1,8 @@
 # 🐦‍⬛ Corvo — Backend
 
 > Componente server centrale del sistema [Corvo](https://github.com/), sviluppato come progetto di tesi magistrale in collaborazione con **Sinelec S.p.A.**
- all'avvio crea un utente di tipo SUPERVISOR con i seguenti dati:
+
+>**Per testing**: all'avvio crea un utente di tipo SUPERVISOR con i seguenti dati:
     -  username : Admin
     - email = admin@gmail.com
     -  password = Admin@123_!
