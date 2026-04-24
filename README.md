@@ -1,6 +1,6 @@
 # 🐦‍⬛ Corvo — Backend
 
-> Componente server centrale del sistema [Corvo](https://github.com/), sviluppato come progetto di tesi magistrale in collaborazione con **Sinelec S.p.A.**
+> Componente server centrale del sistema [Corvo](https://github.com/MariusBerinde/corvo.git), sviluppato come progetto di tesi magistrale in collaborazione con **Sinelec S.p.A.**
 
 ---
 
