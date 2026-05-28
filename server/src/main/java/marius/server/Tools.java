@@ -7,6 +7,9 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 
 import java.util.regex.Pattern;
 
+/**
+ * This class contains support functions for manage the hash of the passwords and for the ip validation .
+ */
 public class Tools {
 
     private static final Logger log = LoggerFactory.getLogger(Tools.class);
@@ -23,14 +26,6 @@ public class Tools {
      *
      * @param email the email address to validate (can be null)
      * @return true if the email has a valid format, false otherwise (including null input)
-     *
-     *
-     * @example
-     * <pre>
-     * isValidEmail("test@example.com") → true
-     * isValidEmail("invalid-email") → false
-     * isValidEmail(null) → false
-     * </pre>
      *
      * @since 1.0
      */

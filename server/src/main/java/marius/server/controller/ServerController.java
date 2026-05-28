@@ -23,8 +23,15 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-/** This class contains all the REST routes for interract with the agents python
- * @Autorthor Marius Berinde
+/** REST controller used for manage the interaction between the client angular and the python agent of the docker swarm
+ * <p>
+ *    This class contains the routes for get or set data to agents python
+ * </p>
+ * <p>
+ *   In the project a python agent is called server
+ * </p>
+ * <p> The controller  use the Postgres database for save the relevant data </p>
+ * @author  Marius Berinde
  */
 @RestController
 @CrossOrigin
@@ -115,10 +122,14 @@ public class ServerController {
     }
 
     /**
-     * This route will return a  List<Server> of all servers added in the database
+     * This route will return a  {@code List<Server>} of all servers added in the database
      * @param email the email of the user who try to get the servers
-     * @param request
-     * @return
+     * @param request HttpServletRequest used for IP address logging
+     * @return ResponseEntity  with:
+     * <ul>
+     *     <li> 200 OK and body {@code List<Server>} of the servers </li>
+     *     <li> 401 UNAUTHORIZED if the user is not authorizated</li>
+     * </ul>
      */
     @GetMapping("/getAllServers")
     public ResponseEntity getAllServers(@RequestHeader("email") String email, HttpServletRequest request){
@@ -143,6 +154,12 @@ public class ServerController {
         return ResponseEntity.ok(servers);
     }
 
+    /**
+     * Returns the {@code List<Logs>} of all the log from the table Log
+     * @param username the email of the user
+     * @param request HttpServletRequest used for IP address logging
+     * @return the logs of the system if the user ir auth
+     */
     @GetMapping("/getAllLogs")
     public ResponseEntity getAllLogs(@RequestHeader("username") String username, HttpServletRequest request){
         if(username == null || username.isEmpty()){
@@ -162,6 +179,12 @@ public class ServerController {
         return ResponseEntity.ok(logRepo.findAll());
     }
 
+    /**
+     *  Returns the logs of the user
+     * @param email the email of the user
+     * @param request HttpServletRequest used for IP address logging
+     * @return
+     */
     @GetMapping("/getUserLogs")
     public ResponseEntity getUserLogs(@RequestHeader("email") String email, HttpServletRequest request){
         if(email == null || email.isEmpty()){
@@ -183,6 +206,14 @@ public class ServerController {
     }
 
 
+    /**
+     *  Allows to the user to add a log to the database
+     * @param requestBody the json object must contain:
+     *                    - username : the username of the user
+     *                    - log : the log that will added to the database
+     * @param request is used for track the ip of unautorizated users
+     * @return the log that is added to db for confirmation
+     */
     @PostMapping("/addLog")
     public ResponseEntity addLog(@RequestBody JsonNode requestBody, HttpServletRequest request){
         if(!requestBody.hasNonNull("username")){
@@ -282,11 +313,11 @@ public class ServerController {
     /**
      *  Allows to the user to add the json array of array logs
      * @param requestBody  requestBody JSON object containing user credentials:
-     *      *                    - username (string, required): the user's username
-     *      *                    - logs (string, required): the json array of logs that will be added to the server
-     *      *
+     *                          - username (string, required): the user's username
+     *                          - logs (string, required): the json array of logs that will be added to the server
+     *
      * @param request is used for track the ip of unautorizated users
-     * @return
+     * @return true if the list is added to the database
      */
     @PostMapping("/addAllLogs")
     public ResponseEntity addAllLogs(@RequestBody JsonNode requestBody, HttpServletRequest request){
@@ -385,7 +416,7 @@ public class ServerController {
      *         - 401 Unauthorized: If the username is not recognized in the system
      *         - 404 Not Found: If the specified IP does not correspond to any registered server
      *
-     * @apiNote The method performs the following validations in sequence:
+     *  The method performs the following validations in sequence:
      *          1. Presence of username field in the request body
      *          2. Presence of ip field in the request body
      *          3. User authentication via username
@@ -441,7 +472,7 @@ public class ServerController {
      *         - 200 OK: Complete list of all services in the system
      *         - 400 Bad Request: If the username field is missing from the request body
      *
-     * @apiNote The method performs the following validations:
+     *  The method performs the following validations:
      *          1. Presence of username field in the request body
      *          2. User lookup in the repository (though authentication result is not currently validated)
      *          Note: The method currently returns all services regardless of user authentication status
@@ -476,7 +507,7 @@ public class ServerController {
      *         - 401 Unauthorized: If the username is not recognized in the system
      *         - 404 Not Found: If no service with the specified name exists
      *
-     * @apiNote The method performs the following validations in sequence:
+     * The method performs the following validations in sequence:
      *          1. Presence of username field in the request body
      *          2. Presence of name field in the request body
      *          3. User authentication via username
@@ -579,6 +610,20 @@ public class ServerController {
         return ResponseEntity.ok(local);
     }
 
+    /**
+     * Gets from the database the rules of the associated IP
+     * @param requestBody JSON object containing the request parameters:
+     *                   - username (String, required): Username of the requester
+     *                   - ip (String, required): the ip of the server in format IPV4
+     *
+     * @param request HttpServletRequest object used for logging the client's IP address
+     * @return ResponseEntity  with:
+     * <ul>
+     *     <li> status OK and {@code List<Rule>} if username and ip are valid</li>
+     *     <li> status BAD_REQUEST if the ip is invalid </li>
+     *     <li> status UNAUTHORIZED if the username is invalid </li>
+     * </ul>
+     */
     @PostMapping("/getRulesByIp")
     public ResponseEntity getRulesByIp (@RequestBody JsonNode requestBody, HttpServletRequest request){
 
@@ -678,7 +723,7 @@ public class ServerController {
     /**
      * Returns the list of the skipped tests for the IP agent
      * @param requestBody
-     * @param request
+     * @param request HttpServletRequest object used for logging the client's IP address
      * @return
      */
     @PostMapping("/getLynisByIp")
@@ -1079,6 +1124,21 @@ public class ServerController {
     }
 
 
+    /**
+     * Return the status of the services of the indicate server
+     * @param requestBody the json object must contain the following field otherwise will return a error:
+     *                    <ul>
+     *                    <li> username : the username of the user who perform the request</li>
+     *                    <li> ip: the ip address of the server in IPV4 format</li>
+     *                    </ul>
+     * @param request a HttpServletRequest instance that is used for log the failed opertion
+     * @return  a ResponseEntity containing a message with :
+     *  <ul>
+     *      <li> status OK and an {@code List<AgentService>} in the body if request is done correcty @see AgentService class for more details</li>
+     *      <li> status UNAUTHORIZED if the username is not reconized</li>
+     *      <li> status BAD_REQUEST if the ip is not valid </li>
+     *  </ul>
+     */
     @PostMapping("/getStatusServer")
     ResponseEntity getStatusServices(@RequestBody JsonNode requestBody,HttpServletRequest request){
         log.info("getStatusServices(requestBody:{})", requestBody);

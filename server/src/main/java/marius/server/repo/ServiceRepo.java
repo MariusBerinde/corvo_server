@@ -6,6 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Interface used for interact with the Service table.
+ */
 public interface ServiceRepo extends JpaRepository<AgentService,Integer> {
     /**
      *  Return all services with ip

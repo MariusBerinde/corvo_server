@@ -2,9 +2,17 @@ package marius.server.data;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import marius.server.Tools;
 import org.hibernate.annotations.DynamicInsert;
 
+/**
+ * Represents a user entity stored in the PostgreSQL database.
+ * <p>
+ * <strong>Important:</strong> The {@code password} field must be encrypted using
+ * the {@code hashPassword} method from the {@code Tool} package before saving to the database.
+ * </p>
+ *
+ * @author Marius Berinde Dumitru
+ */
 @DynamicInsert
 @Data
 @Entity
@@ -57,7 +65,6 @@ public class User{
         this.username = username;
     }
 
-    //public void setPassword(String password) {  this.password = Tools.hashPassword(password); }
     public void setPassword(String password) {  this.password = password; }
 
     public void setRole(RoleEnum newRole) {

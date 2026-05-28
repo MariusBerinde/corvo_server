@@ -1,9 +1,30 @@
 package marius.server.data.dto;
 
+/**
+ * Represents a single security rule returned by the agent
+ * when the {@code getSystemRules} route is called.
+ * <p>
+ * Contains the rule's name, description, status, and the IPv4 address of the agent.
+ * </p>
+ *
+ * @author Marius Berinde Dumitru
+ */
 public class RuleDTO {
+    /**
+     * The name of the rule
+     */
     private String name;
+    /**
+     * The description of the rule
+     */
     private String description;
+    /**
+     * The status of the rule
+     */
     private boolean status;
+    /**
+     * the Ip where the rule is used
+     */
     private String ip;
 
     // Getters e setters

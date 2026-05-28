@@ -4,6 +4,15 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 
+/**
+ * Represents a service running on an agent, corresponding to the {@code service} table in the database.
+ * <p>
+ * <strong>Note:</strong> The {@code ip} field must contain an IPv4 address that exists in the {@code Servers} table,
+ * as it is a foreign key referencing {@code Servers.ip}. Using IPv6 addresses is not supported and may cause errors.
+ * </p>
+ *
+ * @author Marius Berinde Dumitru
+ */
 @Data
 @Entity
 @Table(name = "service")

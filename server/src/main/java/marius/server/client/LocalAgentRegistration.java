@@ -21,10 +21,12 @@ import java.util.concurrent.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Component
-/*
-  Class used for manage the comunication with the user agent
+/**
+  Class used for manage the communication with the python agent.
+
+ * @author Marius Dumitru Berinde
  */
+@Component
 public class LocalAgentRegistration {
 
     private static final Logger log = LoggerFactory.getLogger(LocalAgentRegistration.class);
@@ -39,6 +41,9 @@ public class LocalAgentRegistration {
     private final Long MINUTE_IN_MILLIS = 60000L;
     private final Long TIME_TO_WAIT = MINUTE_IN_MILLIS / 2;
 
+    /**
+     * Costructor of the class
+     */
     public LocalAgentRegistration(AgentClientPython client, ServerRepo serverRepo,
                                   @Lazy ServerController serverController, LynisRepo lynisRepo,ServiceRepo serviceRepo,RulesRepo rulesRepo) {
         this.client = client;
@@ -58,9 +63,9 @@ public class LocalAgentRegistration {
 
     /**
      * Registra un nuovo agente e avvia il processo di inizializzazione
-     * @param ip IP dell'agente
-     * @param port Porta dell'agente
-     * @return true se la registrazione è avviata con successo
+     * @param ip IP of the agent
+     * @param port port of the agente
+     * @return true
      */
     public boolean registerAgent(String ip, int port) {
         log.info("Registrazione nuovo agente: {}:{}", ip, port);
@@ -154,6 +159,10 @@ public class LocalAgentRegistration {
         rulesRepo.saveAll(dbRules);
     }
 
+    /**
+     * Set false the state of the service with {@code ip}
+     * @param ip the IPV4 address
+     */
     private void setsDownServices(String ip) {
         List<AgentService> servicesIp = serviceRepo.findAllByIp(ip);
        for (AgentService service : servicesIp) {
@@ -227,29 +236,14 @@ public class LocalAgentRegistration {
         }
     }
 
-   private void updateServices(String ip,List<AgentService> dbService,List<AgentService> incomingServices) {
-       log.info("Manage update services for {} agente {}", ip,incomingServices.size());
 
-       Map<String, AgentService> oldServicesMap = dbService.stream()
-               .collect(Collectors.toMap(AgentService::getName, Function.identity()));
 
-       List<AgentService> newRules = new ArrayList<>();
 
-       for (AgentService updatedRule : incomingServices) {
-           AgentService oldService = oldServicesMap.get(updatedRule.getName());
-           if (oldService != null ) {
-               oldService.setState(updatedRule.isState());
-               oldService.setAutomaticStart(updatedRule.isAutomaticStart());
-           } else {
-               newRules.add(updatedRule); // 👈 è una regola nuova, va aggiunta
-           }
-       }
-
-       this.serviceRepo.saveAll(dbService);
-       this.serviceRepo.saveAll(newRules);
-
-   }
-
+    /**
+     * Alternative version of {@code updateService} that delete the old serivces with ip {@code IP} .
+     * @param ip the IPV4 address of the service
+     * @param incomingServices the list of new services
+     */
    private void updateServicesAlt(String ip,List<AgentService> incomingServices) {
         log.info("MANAGE UPDATE ALT :services by deleting the old data in the database for {} agente {}", ip,incomingServices.size());
         boolean state = client.deleteOldServices(ip);

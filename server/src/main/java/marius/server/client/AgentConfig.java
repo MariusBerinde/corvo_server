@@ -5,6 +5,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
+/**
+ * Class used for config the AngentConfig
+ * @author  Marius Berinde
+ */
 @Configuration
 public class AgentConfig {
     @Bean

@@ -1,15 +1,11 @@
 package marius.server;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import marius.server.data.Lynis;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -18,12 +14,20 @@ import java.util.Locale;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for methods in the {@code Tools} class.
+ * @author : Marius Berinde Dumutru
+ */
 public class ToolTests {
 
     private static final Logger log = LoggerFactory.getLogger(ToolTests .class);
 
 
-    @Test
+/**
+ * Tests the {@code isValidEmail} method to ensure it correctly identifies
+ * valid and invalid email formats, including null and empty strings.
+ */
+@Test
     void checkisValidEmail(){
         String[] validFormats = {
                 "user@example.com",
@@ -63,6 +67,10 @@ public class ToolTests {
     }
 
     @Test
+    /**
+     * Tests password hashing and verification using Argon2PasswordEncoder,
+     * ensuring the hashed password matches the original plain text.
+     */
     void testEncodeWithArgon(){
         String plain1 = "Sudo";
         String plain2 = "abcd";
@@ -79,6 +87,10 @@ public class ToolTests {
     }
 
     @Test
+    /**
+     * Tests the {@code isValidIp} method with various IPv4 addresses,
+     * including boundary cases, private IP ranges, and clearly invalid inputs.
+     */
     void testValidIp(){
         String minLenght="0.0.0.0";
         String maxLenght="255.255.255.255";
@@ -115,18 +127,13 @@ public class ToolTests {
 
     }
 
-    @Test
+
+/**
+ * Tests working with {@code ObjectNode} and {@code ArrayNode} using Jackson,
+ * demonstrating how to build JSON objects and extract values as comma-separated strings.
+ */
+@Test
     void testVector(){
-        /*
-{
-  "username": "t1",
-  "lynis": {
-    "ip": "193.168.111.111",
-    "auditor": "lol",
-    "listIdSkippedTest":["ACCT-2754","ACCT-2760"]
-  }
-}
-         */
         String username="t1", ip = "193.168.111.111", auditor = "lol";
         ObjectMapper mapper = new ObjectMapper();
 
@@ -141,11 +148,6 @@ public class ToolTests {
         list.add("ACCT-2754");  list.add("ACCT-2760");
         lynis.put("listIdSkippedTest", list);
         main.put("lynis", lynis);
-        System.out.println("Oggetto creato = "+main.toString());
-        System.out.println("-------------------");
-       String objUsername = main.get("username").asText();
-       String objIp = main.get("lynis").get("ip").asText();
-       String objAuditor = main.get("lynis").get("auditor").asText();
         JsonNode objList =  main.get("lynis").get("listIdSkippedTest");
        String row="";
         if( objList.isArray() ){
@@ -164,6 +166,9 @@ public class ToolTests {
     }
 
     @Test
+    /**
+     * test used for understand how to manage how to work with DateTimeFormatter
+     */
     void testTresformStringToTimeStamp(){
 
         String stringLogJson ="Mon May 05 2025 10:48:30 GMT+0200 (Ora legale dell’Europa centrale)";

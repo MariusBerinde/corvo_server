@@ -4,6 +4,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/** Class used for manage the cors requests
+ * @author Marius Berinde
+ */
 @Configuration
 public class CorsoConfig implements WebMvcConfigurer {
 

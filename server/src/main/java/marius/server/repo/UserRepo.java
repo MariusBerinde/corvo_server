@@ -5,6 +5,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
+/**
+ * Spring Data JPA repository used to manage {@link User} entities.
+ * <p>
+ * Provides methods to check if a user exists and to find users by username or email.
+ * </p>
+ */
 public interface UserRepo extends JpaRepository<User, String>{
 	/**
 	 * @param username : the name of the user

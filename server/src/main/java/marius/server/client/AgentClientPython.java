@@ -17,25 +17,46 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
 
+/**
+ * Class that implement REST calls to python agent
+ * @author Marius Berinde
+ */
 @Service
 public class AgentClientPython {
+    /**
+     * default config port 5000
+     */
     @Value("${agent.local.port:5000}")
     private int defaultPort;
-
+    /**
+     * the ip used for reach the local host
+     */
     @Value("${agent.local.host:localhost}")
     private String defaultHost;
 
+    /**
+     * Used for perform http requests
+     */
     private RestTemplate restTemplate;
+    /**
+     * used for make logging
+     */
     private static final Logger log = LoggerFactory.getLogger(AgentClientPython.class);
+    /**
+     * used for interact with service table
+     */
     private static ServiceRepo serviceRepo;
 
+    /**
+     * Class constructor
+     */
     public AgentClientPython(RestTemplate restTemplate , ServiceRepo serviceRepo) {
         this.restTemplate = restTemplate;
         this.serviceRepo = serviceRepo;
     }
 
     /**
-     * Method that make a http get request to the agent python
+     * Method that make  http get request to the agent python
      * @param host the host address of the agent
      * @param port the port of the agent
      * @return true if the status of the request is successful
@@ -505,6 +526,11 @@ public class AgentClientPython {
     }
 
 
+    /**
+     *  Delete the service with {@code ip}
+     * @param ip the address of service in IPV4
+     * @return true if at least one service is deleted from the database
+     */
     @Transactional
     public boolean deleteOldServices(String ip) {
         return serviceRepo.deleteByIp(ip)>0;

@@ -2,12 +2,15 @@ package marius.server.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import marius.server.Tools;
 import marius.server.data.ApprovedUsers;
 import marius.server.data.RoleEnum;
 import marius.server.data.User;
+import marius.server.data.dto.UserRegistrationRequestDto;
 import marius.server.repo.ApprovedUsersRepo;
 import marius.server.repo.UserRepo;
+import marius.server.service.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -20,27 +23,70 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * This class implements REST endpoints for user management and authentication
+ * @author Marius Berinde Dumitru
+ */
 @RestController
 public class AuthController {
+    /**
+     * repository for interact with the approved user table
+     */
     private final ApprovedUsersRepo approvedUsersRepo;
+
+    /**
+     * repository for interact with the approved user table
+     */
     private final UserRepo userRepo;
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+    private final AuthService authService;
 
-    public AuthController(ApprovedUsersRepo approvedUsersRepo, UserRepo userRepo) {
+    /**
+     * Constructs a new AuthController with the required repository dependencies.
+     *
+     * @param approvedUsersRepo repository for managing approved user registrations
+     * @param userRepo repository for managing user accounts
+     */
+    public AuthController(ApprovedUsersRepo approvedUsersRepo, UserRepo userRepo, AuthService authService) {
+
+        this.authService = authService;
         this.approvedUsersRepo = approvedUsersRepo;
         this.userRepo = userRepo;
     }
 
 
     /**
-     * Route for allow the user with email to register to corvo app
+     * Enables user registration by adding an email address to the approved users list.
      *
-     * @param request the object must contain the username and the email
-     * @return True if the email of the user is added to the table ApprovedUsers , false otherwise
-     * @throws Exception handled generically with error message
+     * <p>This endpoint allows authenticated users to approve email addresses for registration.
+     * The requesting user must exist in the system and the email must have a valid format.
+     * If the email is already approved, the operation succeeds without duplicating the entry.</p>
+     *
+     * @param requestBody JSON object containing:
+     *                    <ul>
+     *                    <li><strong>username</strong> (string, required): username of the requesting user</li>
+     *                    <li><strong>email</strong> (string, required): email address to approve for registration</li>
+     *                    </ul>
+     * @param request HttpServletRequest for IP address logging and security monitoring
+     * @return ResponseEntity with:
+     *         <ul>
+     *         <li><strong>200 OK</strong>: email successfully added to approved users list, body: "true"</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing required fields or invalid email format</li>
+     *         <li><strong>401 UNAUTHORIZED</strong>: username not found in system</li>
+     *         </ul>
+     *
+     *  Example request body:
+     * <pre>{@code
+     * {
+     *   "username": "admin_user",
+     *   "email": "newuser@example.com"
+     * }
+     * }</pre>
+     *
+     *  All requests are logged with client IP address for security monitoring
      */
     @PostMapping("/enableUserRegistration")
-    public ResponseEntity enableUserRegistration(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> enableUserRegistration(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
             if (!requestBody.hasNonNull("username")) {
                 log.error("Richiesta malformata: manca 'user' da IP={}", request.getRemoteAddr());
@@ -86,16 +132,35 @@ public class AuthController {
     }
 
 
+    @PostMapping("/enableUserRegistration2")
+    public ResponseEntity<String> enableUserRegistration2(@RequestBody @Valid UserRegistrationRequestDto data, HttpServletRequest request) {
+            String ris = authService.enableUserRegistration(data.email() , data.username(),request.getRemoteAddr());
+            log.info(" enableUserRegistration2 ris={}", ris);
+            return ResponseEntity.ok(ris);
+    }
     /**
-     * Route for get the entries of the table ApprovedUsers
+     * Retrieves all email addresses that are approved for user registration.
      *
-     * @param requestBody must be json object with the username of the user that make the request
-     * @param request     is used for get the ip of the sender
-     * @return a json array with all the users that can registrate to the app
-     * @throws Exception handled generically with error message
+     * <p>This endpoint returns a list of all email addresses that have been approved
+     * for registration in the system. Only authenticated users can access this information.</p>
+     *
+     * @param username username of the requesting user (passed in HTTP header)
+     * @param request HttpServletRequest for IP address logging
+     * @return ResponseEntity with:
+     *         <ul>
+     *         <li><strong>200 OK</strong>: body contains JSON array of approved email addresses</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing or empty username header</li>
+     *         <li><strong>401 UNAUTHORIZED</strong>: username not found in system</li>
+     *         </ul>
+     *
+     *  Response format:
+     * <pre>{@code
+     * ["user1@example.com", "user2@example.com", "user3@example.com"]
+     * }</pre>
+     *
      */
     @GetMapping("/getApprovedUsers")
-    public ResponseEntity getApprovedUsers(@RequestHeader("username") String username, HttpServletRequest request) {
+    public ResponseEntity<?> getApprovedUsers(@RequestHeader("username") String username, HttpServletRequest request) {
         if (username == null || username.isEmpty()) {
             return ResponseEntity.badRequest().body("Missing username header");
         }
@@ -114,11 +179,49 @@ public class AuthController {
             return ResponseEntity.ok(approvedEmails);
     }
 
+
+    @GetMapping("/getApprovedUsers2")
+    public ResponseEntity<?> getApprovedUsers2(@RequestHeader("username") String username, HttpServletRequest request) {
+        if (username == null || username.isEmpty()) {
+            return ResponseEntity.badRequest().body("Missing username header");
+        }
+
+        log.info("IP=" + request.getRemoteAddr(),"getApprovedUsers:parametro "+username);
+
+        List<String> approvedEmails = authService.getApprovedUsers(username,request.getRemoteAddr());
+        return ResponseEntity.ok(approvedEmails);
+    }
+
+    /**
+     * Checks whether an email address is approved for user registration.
+     *
+     * <p>This endpoint verifies if a specific email address exists in the approved
+     * users list and can be used for account registration.</p>
+     *
+     * @param requestBody JSON object containing:
+     *                    <ul>
+     *                    <li><strong>email</strong> (string, required): email address to check</li>
+     *                    </ul>
+     * @param request HttpServletRequest for IP address logging
+     * @return ResponseEntity with:
+     *         <ul>
+     *         <li><strong>200 OK</strong>: email is approved for registration, body: "ok"</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing email field in request body</li>
+     *         <li><strong>404 NOT FOUND</strong>: email is not in approved users list</li>
+     *         </ul>
+     *
+     *  Example request body:
+     * <pre>{@code
+     * {
+     *   "email": "user@example.com"
+     * }
+     * }</pre>
+     */
     @PostMapping("/isEmailApproved")
-    public ResponseEntity isEmailApproved(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> isEmailApproved(@RequestBody JsonNode requestBody, HttpServletRequest request) {
 
         if (!requestBody.hasNonNull("email")) {
-            log.warn("IP=" + request.getRemoteAddr() + " tried to update a user role ");
+            log.error("IP={}  tried to update a user role ",request.getRemoteAddr());
             return ResponseEntity.badRequest().body("username field missing ");
         }
         String email = requestBody.get("email").asText();
@@ -128,8 +231,28 @@ public class AuthController {
         }else{
             return ResponseEntity.notFound().build();
         }
+    }
+
+
+    @PostMapping("/isEmailApproved2")
+    public ResponseEntity<?> isEmailApproved2(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+
+        if (!requestBody.hasNonNull("email")) {
+            log.error("IP=" + request.getRemoteAddr() + " tried to update a user role ");
+            return ResponseEntity.badRequest().body("username field missing ");
+        }
+        String email = requestBody.get("email").asText();
+
+        boolean ris = authService.isEmaiApproved(email);
+        if(ris){
+                return ResponseEntity.ok("ok");
+        }else {
+
+            return ResponseEntity.notFound().build();
+        }
 
     }
+
 
     /**
      * Delete a user from the list of the users that can register to the app
@@ -141,11 +264,11 @@ public class AuthController {
      * @return ResponseEntity with:
      * - 200 OK: user created successfully, body contains User object
      * - 400 BAD REQUEST: validation error or insufficient permissions
-     * @throws Exception handled generically with error message
+     *  Exception handled generically with error message
      */
     @PostMapping("/deleteEnabledUser")
     @Transactional
-    public ResponseEntity deleteEnabledUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> deleteEnabledUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
 
             if (!requestBody.hasNonNull("username")) {
@@ -186,25 +309,56 @@ public class AuthController {
 
     }
 
+    @PostMapping("/deleteEnabledUser2")
+    public ResponseEntity<?> deleteEnabledUser2(@RequestBody @Valid UserRegistrationRequestDto data, HttpServletRequest request) {
+            log.info(" username riconosciuto");
+            Integer ris = authService.deleteEnabledUser(data.username(),data.email(),request.getRemoteAddr() );
+            log.info("ris {} ris ok", ris);
+            return ResponseEntity.ok(ris);
+    }
+
     /**
-     * Creates a new user in the system.
-     * Only users with SUPERVISOR role can create new users.
+     * Creates a new user account in the system.
      *
-     * @param requestBody JSON containing:
-     *                    - username: creator's username (must be SUPERVISOR)
-     *                    - user: object with new user data
-     *                    - name: new user's username
-     *                    - email: new user's email (must be valid)
-     *                    - password: new user's password
-     *                    - role: role as integer (0=SUPERVISOR, other=WORKER)
-     * @param request     HttpServletRequest for IP logging
+     * <p>This endpoint allows the creation of new user accounts with specified roles.
+     * The user's password is automatically hashed using Argon2 before storage.
+     * Email validation is performed to ensure data integrity.</p>
+     *
+     * @param requestBody JSON object containing:
+     *                    <ul>
+     *                    <li><strong>user</strong> (object, required): user data object containing:
+     *                        <ul>
+     *                        <li><strong>name</strong> (string, required): new user's username</li>
+     *                        <li><strong>email</strong> (string, required): new user's email address</li>
+     *                        <li><strong>password</strong> (string, required): new user's password (will be hashed)</li>
+     *                        <li><strong>role</strong> (integer, required): user role (0 = SUPERVISOR, other = WORKER)</li>
+     *                        </ul>
+     *                    </li>
+     *                    </ul>
+     * @param request HttpServletRequest for IP address logging
      * @return ResponseEntity with:
-     * - 200 OK: user created successfully, body contains User object
-     * - 400 BAD REQUEST: validation error or insufficient permissions
-     * @throws Exception handled generically with error message
+     *         <ul>
+     *         <li><strong>200 OK</strong>: user created successfully, body contains User object</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing required fields or invalid email format</li>
+     *         </ul>
+     *
+     *  Example request body:
+     * <pre>{@code
+     * {
+     *   "user": {
+     *     "name": "john_doe",
+     *     "email": "john@example.com",
+     *     "password": "securePassword123",
+     *     "role": 1
+     *   }
+     * }
+     * }</pre>
+     *
+     *  Password is hashed using Argon2 algorithm before database storage
+     * @see RoleEnum for role definitions
      */
     @PostMapping("/addUser")
-    public ResponseEntity addUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> addUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
 /*
             if (creatorUser.getRole() != RoleEnum.SUPERVISOR) {
@@ -250,7 +404,7 @@ public class AuthController {
      * @return ResponseEntity with:
      * - 200 OK: role updated successfully, body contains updated User object
      * - 400 BAD REQUEST: validation error, user not found, or insufficient permissions
-     * @throws Exception handled generically with error message
+     *  Exception handled generically with error message
      *                   <p>
      *                   Example JSON request:
      *                   {
@@ -267,7 +421,7 @@ public class AuthController {
      *                   - Target user is identified by email address
      */
     @PostMapping("/updateRoleUser")
-    public ResponseEntity updateRoleUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> updateRoleUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
             if (!requestBody.hasNonNull("username")) {
                 log.warn("IP=" + request.getRemoteAddr() + " tried to update a user role ");
@@ -367,7 +521,7 @@ public class AuthController {
      *                          }
      */
     @PostMapping("/deleteUser")
-    public ResponseEntity deleteUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> deleteUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
 
         if (!requestBody.hasNonNull("username")) {
             log.warn("IP=" + request.getRemoteAddr() + " tried to update a user role ");
@@ -397,21 +551,38 @@ public class AuthController {
     }
 
     /**
-     * Authenticates a user with username and password credentials.
-     * Verifies the provided password against the stored Argon2 hash.
-     * All authentication attempts are logged with client IP address.
+     * Authenticates a user with email and password credentials.
      *
-     * @param requestBody JSON object containing user credentials:
-     *                    - username (string, required): the user's username
-     *                    - password (string, required): the user's plain text password
-     * @param request     HttpServletRequest used for IP address logging
+     * <p>This endpoint verifies user credentials by checking the provided password
+     * against the stored Argon2 hash. Upon successful authentication, the user's
+     * password is cleared from the response object for security.</p>
+     *
+     * @param requestBody JSON object containing:
+     *                    <ul>
+     *                    <li><strong>email</strong> (string, required): user's email address</li>
+     *                    <li><strong>password</strong> (string, required): user's plaintext password</li>
+     *                    </ul>
+     * @param request HttpServletRequest for IP address logging
      * @return ResponseEntity with:
-     * - 200 OK: authentication successful, body contains User object
-     * - 400 BAD REQUEST: missing required fields (username or password)
-     * - 401 UNAUTHORIZED: invalid username or password
+     *         <ul>
+     *         <li><strong>200 OK</strong>: authentication successful, body contains User object (password cleared)</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing required fields (email or password)</li>
+     *         <li><strong>401 UNAUTHORIZED</strong>: invalid email or password</li>
+     *         </ul>
+     *
+     *  Example request body:
+     * <pre>{@code
+     * {
+     *   "email": "user@example.com",
+     *   "password": "userPassword123"
+     * }
+     * }</pre>
+     *
+     *  All authentication attempts are logged with client IP address
+     *  Password is cleared from response object for security
      */
     @PostMapping("/authUser")
-    public ResponseEntity authUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> authUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         if (!requestBody.hasNonNull("email")) {
             log.warn("IP=" + request.getRemoteAddr() + " tried to login to the system");
             return ResponseEntity.badRequest().body("username field missing ");
@@ -445,22 +616,43 @@ public class AuthController {
     }
 
     /**
-     * Update the password of the user
+     * Updates a user's password after verifying their current password.
      *
-     * @param requestBody JSON object containing user credentials:
-     *                    - email (string, required): the user's username
-     *                    - oldPassword (string, required): the user's plain text password
-     *                    - newPassword (string, required): the user's plain text password
-     * @param request     HttpServletRequest used for IP address logging
+     * <p>This endpoint allows users to change their password by providing their current
+     * password for verification. The new password is hashed using Argon2 before storage.
+     * The operation is performed within a transaction to ensure data consistency.</p>
+     *
+     * @param requestBody JSON object containing:
+     *                    <ul>
+     *                    <li><strong>email</strong> (string, required): user's email address</li>
+     *                    <li><strong>oldPassword</strong> (string, required): current password for verification</li>
+     *                    <li><strong>newPassword</strong> (string, required): new password to set</li>
+     *                    </ul>
+     * @param request HttpServletRequest for IP address logging
      * @return ResponseEntity with:
-     * - 200 OK: authentication successful,true
-     * - 400 BAD REQUEST: missing required fields (username or password)
-     * - 401 UNAUTHORIZED: invalid username or password
-     * - 403 FORBIDDEN: if the old password is not correct
+     *         <ul>
+     *         <li><strong>200 OK</strong>: password updated successfully, body: "true"</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing required fields</li>
+     *         <li><strong>401 UNAUTHORIZED</strong>: user not found</li>
+     *         <li><strong>403 FORBIDDEN</strong>: current password verification failed</li>
+     *         </ul>
+     *
+     *  Example request body:
+     * <pre>{@code
+     * {
+     *   "email": "user@example.com",
+     *   "oldPassword": "currentPassword123",
+     *   "newPassword": "newSecurePassword456"
+     * }
+     * }</pre>
+     *
+     *  Operation is transactional to ensure data consistency
+     *  New password is hashed using Argon2 algorithm
+     *  All password change attempts are logged with client IP address
      */
     @PostMapping("/updatePassword")
     @Transactional
-    public ResponseEntity updatePassword(@RequestBody JsonNode requestBody, HttpServletRequest request) {
+    public ResponseEntity<?> updatePassword(@RequestBody JsonNode requestBody, HttpServletRequest request) {
 
         if (!requestBody.hasNonNull("email")) {
             log.warn("IP=" + request.getRemoteAddr() + "updatePassword missing email field in json file");
@@ -526,17 +718,43 @@ public class AuthController {
     }
 
     /**
-     * Return a copy of al the users in the db
-     * @param username must be in the header , is the username of a user with role SUPERVISOR
-     * @param request HttpServletRequest  is used for log the ip of the request when the request have errors
+     * Retrieves all user accounts from the system with sensitive information removed.
+     *
+     * <p>This endpoint returns a list of all users in the system. Only users with
+     * SUPERVISOR role can access this information. For security, password fields
+     * are excluded from the response. The processing is optimized using parallel streams.</p>
+     *
+     * @param username username of the requesting user (passed in HTTP header, must be SUPERVISOR)
+     * @param request HttpServletRequest for IP address logging
      * @return ResponseEntity with:
-     * - 200 OK: authentication successful,true
-     * - 400 BAD REQUEST: missing required fields (username or password)
-     * - 401 UNAUTHORIZED: invalid username or password
-     * - 403 FORBIDDEN: if the old password is not correct
+     *         <ul>
+     *         <li><strong>200 OK</strong>: body contains JSON array of User objects (without passwords)</li>
+     *         <li><strong>400 BAD REQUEST</strong>: missing username header</li>
+     *         <li><strong>401 UNAUTHORIZED</strong>: user not found or insufficient permissions</li>
+     *         </ul>
+     *
+     * Response format:
+     * <pre>{@code
+     * [
+     *   {
+     *     "username": "user1",
+     *     "email": "user1@example.com",
+     *     "role": "SUPERVISOR"
+     *   },
+     *   {
+     *     "username": "user2",
+     *     "email": "user2@example.com",
+     *     "role": "WORKER"
+     *   }
+     * ]
+     * }</pre>
+     *
+     *  Password fields are excluded from response for security
+     *  Processing uses parallel streams for improved performance
+     *  Only SUPERVISOR users can access this endpoint
      */
     @GetMapping("/getAllUsers")
-   public ResponseEntity getAllUsers(@RequestHeader("username") String username,HttpServletRequest request){
+   public ResponseEntity<?> getAllUsers(@RequestHeader("username") String username,HttpServletRequest request){
 
        if (username == null || username.isEmpty()) {
            log.warn("IP=" + request.getRemoteAddr() + " tried to get users without username");
@@ -570,14 +788,22 @@ public class AuthController {
 
 
     /**
-     * Route used for check if the user server ip up
-     * @return true
+     * Health check endpoint to verify service availability.
+     *
+     * <p>This endpoint provides a simple health check mechanism to verify that the
+     * authentication service is running and responding to requests. It always returns
+     * true and can be used for monitoring and load balancer health checks.</p>
+     *
+     * @return ResponseEntity with 200 OK status and string pong
+     *
+     * This endpoint does not require authentication
+     * Used for service health monitoring and load balancer checks
      */
     @GetMapping("/ping1")
-    public ResponseEntity<Boolean> ping1() {
+    public ResponseEntity<String> ping1() {
 
         log.info("JAVA UP" );
-        return ResponseEntity.ok(true);
+        return ResponseEntity.ok("pong");
     }
 
 

@@ -38,9 +38,30 @@ public class ServiceStatusResponseDTO {
     }
 }
  */
+
+
+/**
+ * Represents the response returned by the agent when the {@code getServiceStatus} route is called.
+ * <p>
+ * Contains the status, an optional message, and a list of services with their status information.
+ * </p>
+ *
+ * @author Marius Berinde Dumitru
+ */
 public class ServiceStatusResponseDTO {
+    /**
+     * the status of the response
+     */
     private String status;
+
+    /**
+     * the message in the response
+     */
     private String message;
+
+    /**
+     * The list of  status services that contains
+     */
     @JsonProperty("status_services")
     private List<ServiceInfo> statusServices;
 
@@ -68,10 +89,24 @@ public class ServiceStatusResponseDTO {
         this.statusServices = statusServices;
     }
 
-    // Classe interna per rappresentare ogni servizio
+
+    /**
+     * Represents the status information of a single service.
+     */
     public static class ServiceInfo {
+        /**
+         * The name of the service
+         */
         private String name;
+
+        /**
+         * {@code true} if the service is running; {@code false} otherwise.
+         */
         private boolean status;
+
+        /**
+         * {@code true} if the service starts automatically; {@code false} otherwise.
+         */
         private boolean automaticStart;
 
         public String getName() {
