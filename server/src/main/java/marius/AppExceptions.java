@@ -9,4 +9,16 @@ public class AppExceptions {
         }
 
     }
+
+    public static class UserNotFoundException extends RuntimeException {
+        public UserNotFoundException(String s) {
+           super("User with username="+s+" not found");
+        }
+    }
+
+    public static class UserSamePasswordExcemptio extends RuntimeException {
+        public UserSamePasswordExcemptio(String s) {
+            super(s);
+        }
+    }
 }

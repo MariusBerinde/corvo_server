@@ -2,6 +2,7 @@ package marius.server;
 
 import jakarta.servlet.http.HttpServletRequest;
 import marius.AppExceptions;
+import org.apache.coyote.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AppExceptions.UserNotAuthException.class)
     public ResponseEntity<String> userNotAuthExceptionHandler(AppExceptions.UserNotAuthException ex) {
+        return  ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(AppExceptions.UserNotFoundException.class)
+    public ResponseEntity<String> userNotFoundExceptionHandler(AppExceptions.UserNotFoundException ex) {
+        return  ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
+    }
+    @ExceptionHandler(AppExceptions.UserSamePasswordExcemptio.class)
+    public ResponseEntity<String> userSamePasswordHandler(AppExceptions.UserSamePasswordExcemptio ex){
         return  ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ex.getMessage());
     }
 }

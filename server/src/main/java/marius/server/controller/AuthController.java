@@ -7,7 +7,7 @@ import marius.server.Tools;
 import marius.server.data.ApprovedUsers;
 import marius.server.data.RoleEnum;
 import marius.server.data.User;
-import marius.server.data.dto.UserRegistrationRequestDto;
+import marius.server.data.dto.*;
 import marius.server.repo.ApprovedUsersRepo;
 import marius.server.repo.UserRepo;
 import marius.server.service.AuthService;
@@ -133,7 +133,7 @@ public class AuthController {
 
 
     @PostMapping("/enableUserRegistration2")
-    public ResponseEntity<String> enableUserRegistration2(@RequestBody @Valid UserRegistrationRequestDto data, HttpServletRequest request) {
+    public ResponseEntity<String> enableUserRegistration2(@RequestBody @Valid UserLoginDto data, HttpServletRequest request) {
             String ris = authService.enableUserRegistration(data.email() , data.username(),request.getRemoteAddr());
             log.info(" enableUserRegistration2 ris={}", ris);
             return ResponseEntity.ok(ris);
@@ -310,7 +310,7 @@ public class AuthController {
     }
 
     @PostMapping("/deleteEnabledUser2")
-    public ResponseEntity<?> deleteEnabledUser2(@RequestBody @Valid UserRegistrationRequestDto data, HttpServletRequest request) {
+    public ResponseEntity<?> deleteEnabledUser2(@RequestBody @Valid UserLoginDto data, HttpServletRequest request) {
             log.info(" username riconosciuto");
             Integer ris = authService.deleteEnabledUser(data.username(),data.email(),request.getRemoteAddr() );
             log.info("ris {} ris ok", ris);
@@ -360,11 +360,6 @@ public class AuthController {
     @PostMapping("/addUser")
     public ResponseEntity<?> addUser(@RequestBody JsonNode requestBody, HttpServletRequest request) {
         try {
-/*
-            if (creatorUser.getRole() != RoleEnum.SUPERVISOR) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only supervisors can create users");
-            }
-            */
 
             String tmp_name = requestBody.get("user").get("name").asText();
 
@@ -389,6 +384,12 @@ public class AuthController {
             log.error("IP=" + request.getRemoteAddr() + "Problema con richiesta =" + e.getMessage());
             return ResponseEntity.badRequest().body("missing 'username' and 'user'");
         }
+    }
+
+    @PostMapping("/addUser2")
+    public ResponseEntity<?> addUser2(@RequestBody @Valid AddUserRequestDto user, HttpServletRequest request) {
+            User tmp = authService.createUser(user.user(),request.getRemoteAddr());
+            return ResponseEntity.ok(tmp);
     }
 
     /**
@@ -490,6 +491,11 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/updateRoleUser2")
+    public ResponseEntity<?> updateRoleUser2(@RequestBody @Valid UpdateRequestRoleDto user, HttpServletRequest request) {
+        String ris = authService.changeUserRole(user,request.getRemoteAddr());
+        return ResponseEntity.ok(ris);
+    }
 
     /**
      * Deletes a user from the system.
@@ -547,6 +553,15 @@ public class AuthController {
         log.info("operator =" + operator + " delete user =" + userEmail);
         userRepo.deleteById(userEmail);
         return ResponseEntity.ok("true");
+
+    }
+
+    @PostMapping("/deleteUser2")
+    public ResponseEntity<?> deleteUser2(@RequestBody @Valid UserLoginDto data, HttpServletRequest request) {
+        String supervisor = data.username();
+        String email = data.email();
+        String ris = authService.deleteUser(supervisor,email,request.getRemoteAddr());
+        return ResponseEntity.ok(ris);
 
     }
 
@@ -615,6 +630,13 @@ public class AuthController {
         return ResponseEntity.ok(serverUser.get());
     }
 
+    @PostMapping("/authUser2")
+    public ResponseEntity<?> authUser2(@RequestBody @Valid UserAuthDto data, HttpServletRequest request) {
+        /*
+         */
+        User ris = authService.loginUser(data.email(),data.password(),request.getRemoteAddr());
+        return ResponseEntity.ok(ris);
+    }
     /**
      * Updates a user's password after verifying their current password.
      *
@@ -717,6 +739,14 @@ public class AuthController {
         return ResponseEntity.ok("true");
     }
 
+
+
+    @PostMapping("/updatePassword2")
+    public ResponseEntity<String> updatePassword2(@RequestBody @Valid RequestUpdatePasswordDto data, HttpServletRequest request) {
+        String ris = authService.updateUserPassword(data.email(),data.oldPassword(),data.newPassword(),request.getRemoteAddr());
+        return ResponseEntity.ok(ris);
+    }
+
     /**
      * Retrieves all user accounts from the system with sensitive information removed.
      *
@@ -785,7 +815,19 @@ public class AuthController {
 
         return ResponseEntity.ok(users);
    }
+    @GetMapping("/getAllUsers2")
+    public ResponseEntity<?> getAllUsers22(@RequestHeader("username") String username,HttpServletRequest request){
 
+        if (username == null || username.isEmpty()) {
+            log.warn("IP={} tried to get users without username", request.getRemoteAddr());
+            return ResponseEntity.badRequest().body("Missing username header");
+        }
+
+        /*
+*/
+        List<User> users = authService.getAllUsers(username,request.getRemoteAddr());
+        return ResponseEntity.ok(users);
+    }
 
     /**
      * Health check endpoint to verify service availability.

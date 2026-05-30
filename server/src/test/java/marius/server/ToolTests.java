@@ -30,6 +30,7 @@ public class ToolTests {
 @Test
     void checkisValidEmail(){
         String[] validFormats = {
+                "john@example.com",
                 "user@example.com",
                 "test.email@domain.org",
                 "user123@test-domain.co.uk",

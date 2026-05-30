@@ -2,7 +2,7 @@ package marius.server.data.dto;
 
 import jakarta.validation.constraints.*;
 
-public record UserRegistrationRequestDto(
+public record UserLoginDto(
         @NotNull
         @NotEmpty
         @NotBlank(message = "username is required")
