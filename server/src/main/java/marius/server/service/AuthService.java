@@ -1,7 +1,6 @@
 package marius.server.service;
 
 import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import marius.AppExceptions;
 import marius.server.Tools;
 import marius.server.data.ApprovedUsers;
@@ -36,6 +35,12 @@ public class AuthService {
         this.userRepo = userRepo;
     }
 
+    /**
+     * @param email of the user that perform the operation
+     * @param username of the user that will be preapproved
+     * @param ip of the user that make the operation , the field is used for monitor the real machine
+     * @return a string with true if the operation is done correctly and launch UserNotAuthException if the email is not found
+     */
     @Transactional
     public String enableUserRegistration(String email, String username, String  ip) {
 
@@ -48,19 +53,22 @@ public class AuthService {
 
         Optional<ApprovedUsers> user =approvedUsersRepo.findByEmail(email);
         if(user.isEmpty()){
-
             ApprovedUsers tmp = new ApprovedUsers(email);
             log.info(" Approved Users: {}",  tmp);
             approvedUsersRepo.save(tmp);
             return "true";
         }
         return "true";
-
     }
 
+    /**
+     * @param username of the user that perform the operation
+     * @param ip of the user that make the operation , the field is used for monitor the real machine
+     * @throws AppExceptions.UserNotAuthException if user is not recognized
+     * @return List<String> of the users that are pre-approved and can use the app
+     */
     @Transactional
     public List<String> getApprovedUsers(String username,String ip) {
-
         if (!userRepo.existsByUsername(username)) {
             log.error("IP={} username ={} not foud",  ip,username);
             throw new AppExceptions.UserNotAuthException("user not allowed to registration");
@@ -73,6 +81,10 @@ public class AuthService {
         return approvedEmails;
     }
 
+    /**
+     * @param email of the user
+     * @return true is email is present in approvedUsersRepo table
+     */
     @Transactional
     public boolean isEmaiApproved(String email) {
         return approvedUsersRepo.findByEmail(email).isPresent();
@@ -96,25 +108,33 @@ public class AuthService {
         return approvedUsersRepo.deleteByEmail(email);
     }
 
+    /**
+     *
+     * @param user the data of the user used during registration
+     * @param remoteAddr the ip address of the user that make the request
+     * @return the user created with password field empty
+     */
     @Transactional
-    public User createUser(@Valid UserRegistrationDto user, String remoteAddr) {
-
+    public User createUser( UserRegistrationDto user, String remoteAddr) {
         String tmp_name = user.name();
-
         String tmp_email = user.email();
-
         String tmp_password = Tools.hashPassword(user.password());
-        //String tmp_password = requestBody.get("user").get("password").asText();
 
         log.info("tmp_password={}" , tmp_password);
         RoleEnum tmp_role = (user.role() == 0) ? RoleEnum.SUPERVISOR : RoleEnum.WORKER;
         log.info("tmp_role={}" , tmp_role);
         User tmp = new User(tmp_name, tmp_email, tmp_password, tmp_role);
         log.info("tmp_user={}", tmp.toString());
-
-        return userRepo.save(tmp);
+        userRepo.save(tmp);
+        return new User(tmp.getUsername(),tmp.getEmail(),"",tmp.getRole());
     }
 
+    /**
+     *
+     * @param user data of user
+     * @param remoteAddr ip addr of user
+     * @return
+     */
     @Transactional
     public String changeUserRole( UpdateRequestRoleDto user, String remoteAddr) {
 
@@ -130,7 +150,6 @@ public class AuthService {
             log.error("Attempt to change role of a user made by IP={} by user with email={}" , remoteAddr, operatorUser.getEmail() );
             throw new AppExceptions.UserNotAuthException("user not allowed to change role");
         }
-
 
         String userEmail = user.user().email();
 
@@ -149,6 +168,14 @@ public class AuthService {
 
             return "true";
     }
+
+    /**
+     *
+     * @param supervisor the username of  the user that make the deletion
+     * @param email the email of the user that is deleted
+     * @param remoteAddr the ip of the supervisor
+     * @return true is deletion completed
+     */
 
     @Transactional
     public String deleteUser(String supervisor, String email, String remoteAddr) {
@@ -170,9 +197,14 @@ public class AuthService {
        return "true";
     }
 
+    /**
+     * @param email of the user
+     * @param password of the user
+     * @param ip addr of the user
+     * @return ok
+     */
+    @Transactional
     public User loginUser(String email, String password, String ip) {
-
-
         Optional<User> serverUser = userRepo.findUserByEmail(email);
         log.info("serverUser={}", serverUser.get());
         if (serverUser.isEmpty()) {
@@ -193,6 +225,13 @@ public class AuthService {
     }
 
 
+    /**
+     * @param email of the user
+     * @param oldPwd
+     * @param newPwd
+     * @param ip addr of the user
+     * @return
+     */
     @Transactional
     public String updateUserPassword(String email,String oldPwd,String newPwd,String ip) {
         Optional<User> serverUser = userRepo.findUserByEmail(email);
